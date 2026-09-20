@@ -1,0 +1,4 @@
+# dsh bundle patch: 把本插件插进 profile 的层栈。
+- insert:
+    - id: dsh-taskwatch
+      name: dsh-taskwatch
