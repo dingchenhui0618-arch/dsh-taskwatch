@@ -139,8 +139,12 @@ const boot = [
 
 let out = page
 
-const tickLine = 'tick();setInterval(tick,3000);'
-if (!out.includes(tickLine)) {
+// 把 page.html 结尾的「启动轮询」那一行整行换掉，演示页于是不轮询、不联网。
+//
+// 用锚定行首的正则而不是精确字符串：这行已经因为加了可见性判断改动过一次，
+// 每次都要同步本脚本太脆。行首 tick(); 不会和 function tick(){ 混淆。
+const tickLine = /^tick\(\);.*$/m
+if (!tickLine.test(out)) {
   console.error('找不到取数启动行，page.html 结构变了，请同步更新本脚本')
   process.exit(1)
 }

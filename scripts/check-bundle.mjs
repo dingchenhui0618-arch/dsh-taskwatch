@@ -141,6 +141,15 @@ check("宿主注册了 '/taskwatch' 路由", hostSrc.includes("'/taskwatch'"))
 check('宿主不提供任何写操作（只读承诺）',
   !/req\.method\s*===\s*'POST'/.test(hostSrc) && !/method\s*===\s*'POST'/.test(hostSrc))
 
+// 轮询路径的开销与缓存协商。snapshot() 一次要问一圈服务（每个 agent 的 jobs、
+// 每个会话的 eventAt/title/goal、每个 agent 的 listDescendants），而手机页面
+// 每 3 秒轮询一次，桌面面板和多个标签页还会各来一份。这两条断言把「不能退化成
+// 每请求全量采集」和「不能退化成每次都重传整份 JSON」钉住。
+check('宿主对快照做 TTL 缓存并合并并发请求',
+  /SNAPSHOT_TTL_MS/.test(hostSrc) && /inflight/.test(hostSrc))
+check('宿主用 If-None-Match 协商 304',
+  hostSrc.includes('if-none-match') && /send\(res,\s*304/.test(hostSrc))
+
 // --- 6. 打包元数据 ---
 const patch = readFileSync(join(ROOT, pkg.dsh.bundle.patch), 'utf8')
 check('cordis.patch.yml 用包名引用插件', patch.includes(pkg.name), patch.trim())
@@ -151,6 +160,63 @@ check("dsh.client.platform 为 web",
   pkg.dsh.client && pkg.dsh.client.platform === 'web')
 check('files 含 lib 与 cordis.patch.yml',
   pkg.files.includes('lib') && pkg.files.includes('cordis.patch.yml'))
+
+// --- 7. 手机页面（lib/page.html）---
+//
+// 这一节盯两件在真实使用里会出事、但肉眼看不出来的事：
+//   1) XSS —— 页面把会话标题、任务 label 等用户可控文本拼进 innerHTML。
+//      它是 npm 上公开的插件，别人的标题里出现 <img onerror> 就会执行。
+//   2) 手机上的耗电 —— 页面常驻后台标签页时不该继续每 3 秒发请求。
+const page = readFileSync(join(ROOT, 'lib', 'page.html'), 'utf8')
+
+const escMap = /ES=\{([^}]*)\}/.exec(page)
+const escaped = escMap ? escMap[1] : ''
+check("page.html 的转义表覆盖 & < > \" '",
+  escaped.includes("'&'") && escaped.includes("'<'") && escaped.includes("'>'")
+    && escaped.includes('&quot;') && escaped.includes('&#39;'),
+  escMap ? escMap[1] : '(找不到 ES 表)')
+
+// 页面里的内联脚本必须能编译。
+//
+// 它既不是模块、也没有任何构建步骤会碰它，所以一个手误（比如编辑时把某个函数的
+// 声明行连同别的改动一起替换掉）不会让 CI 变红，只会在浏览器里变成一片空白。
+// 这条断言就是为那种时刻准备的 —— 写它之前刚发生过一次。
+const pageScript = /<script>([\s\S]*?)<\/script>/.exec(page)
+let pageSyntaxError = null
+if (!pageScript) pageSyntaxError = '找不到内联 <script> 块'
+else { try { new Function(pageScript[1]) } catch (e) { pageSyntaxError = e.message } }
+check('page.html 的内联脚本可编译', pageSyntaxError === null, pageSyntaxError || '')
+
+const innerHtmlWrites = (page.match(/innerHTML\s*=/g) || []).length
+check('page.html 只在渲染入口写一次 innerHTML',
+  innerHtmlWrites === 1, `实际 ${innerHtmlWrites} 处`)
+
+check('page.html 在页面隐藏时停止轮询',
+  page.includes('visibilitychange') && page.includes('document.hidden'))
+
+// 与宿主的 304 是配套的：用 no-store 的话浏览器根本不保存响应，
+// 也就永远不会带 If-None-Match 回来，宿主那边的 304 就成了死代码。
+check("page.html 用 cache:'no-cache' 取数（304 才可能生效）",
+  page.includes("{cache:'no-cache'}"))
+
+// 签名必须对 generatedAt 免疫，否则「数据没变就不碰 DOM」是空话。
+// 宿主算 ETag 时做了同一件事，两处必须一致。
+check('page.html 的签名排除 generatedAt',
+  /k==='generatedAt'\?0/.test(page))
+// 真测行为，而不是查字符串在不在。
+//
+// 之前这条是 `hostSrc.includes('"generatedAt":0')` 之类 —— 那种断言在 ETag 明明
+// 永不命中（因为 generatedAt 每次都变）时依然显示「通过」，等于给自己发绿灯。
+const etagBase = { generatedAt: 1, totals: { sessions: 2 }, sessions: [{ id: 'a' }] }
+const etagOther = { generatedAt: 1, totals: { sessions: 3 }, sessions: [{ id: 'a' }] }
+const etagNewer = { generatedAt: 999999, totals: { sessions: 2 }, sessions: [{ id: 'a' }] }
+
+check('ETag 对内容敏感',
+  host.etagOf(etagBase) !== host.etagOf(etagOther))
+check('ETag 对 generatedAt 免疫（否则 304 永不命中）',
+  host.etagOf(etagBase) === host.etagOf(etagNewer))
+check('ETag 是带引号的合法值',
+  /^"[0-9a-f]{20}"$/.test(host.etagOf(etagBase)), host.etagOf(etagBase))
 
 console.log(failures === 0 ? '\n全部通过' : `\n${failures} 项失败`)
 process.exit(failures === 0 ? 0 : 1)

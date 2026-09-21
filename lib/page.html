@@ -80,6 +80,9 @@ footer{color:var(--dim);font-size:11px;text-align:center;padding:0 16px calc(20p
 var root=document.getElementById('root'),meta=document.getElementById('meta'),foot=document.getElementById('foot');
 var ES={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 function esc(s){return String(s===null||s===undefined?'':s).replace(/[&<>"']/g,function(c){return ES[c]})}
+/* 会话/工作流 id 很长，整条打在页面上会把行撑开。完整值仍留在 data-sid 上供点击
+   使用，这里只是显示得短一点 —— 注意这是排版考虑，不是安全手段：完整 id 依然在 DOM 里。 */
+function shortId(id){id=String(id||'');return id.length>14?id.slice(0,10)+'…':id}
 function ago(t,now){if(!t)return '—';var s=Math.max(0,Math.round((now-t)/1000));if(s<60)return s+'s 前';var m=Math.floor(s/60);if(m<60)return m+'m 前';var h=Math.floor(m/60);if(h<24)return h+'h 前';return Math.floor(h/24)+'d 前'}
 function dur(a,b,now){if(!a)return '—';var s=Math.max(0,Math.round(((b||now)-a)/1000));if(s<60)return s+'s';var m=Math.floor(s/60);if(m<60)return m+'m'+(s%60)+'s';var h=Math.floor(m/60);return h+'h'+(m%60)+'m'}
 function dot(status){var c=status==='running'?'run':(status==='stopping'?'warn':(status==='failed'||status==='killed'?'err':''));return '<span class="dot '+c+'"></span>'}
@@ -174,7 +177,7 @@ function build(d){
       +'<span class="tri'+(open?' open':'')+'">▶</span>'
       +dot(x.running?'running':(x.activeJobs?'stopping':'idle'))
       +'<div class="grow"><div class="name">'+esc(x.title||x.id)+'</div>'
-      +'<div class="mono">'+esc(x.id)+'</div>'
+      +'<div class="mono">'+esc(shortId(x.id))+'</div>'
       +'<div class="dim">'+(x.running?'运行中':'空闲')+((x.activeJobs)?' · '+x.activeJobs+' 个任务在跑':'')+((x.live)?'':' · 仅日志')+((x.origin==='subagent')?' · 子代理':'')+((x.depth)?' · 深度'+x.depth:'')+((x.preset)?' · '+esc(x.preset):'')+'</div>'
       /* 目标块在展开后的详情里会完整再现（阶段/轮次/objective/阻塞），
        * 所以展开时这里收起来 —— 否则同一屏里同样的字出现两遍，看着像 bug。
@@ -202,7 +205,7 @@ function build(d){
   if(!d.subagents.length)h+='<div class="empty">没有子代理。</div>';
   else for(i=0;i<d.subagents.length&&i<40;i++){x=d.subagents[i];
     h+='<div class="row">'+dot(x.activity==='running'?'running':'idle')+'<div class="grow"><div class="name">'+esc(x.label||x.id)+'</div>'
-      +'<div class="mono">'+esc(x.id)+'</div>'
+      +'<div class="mono">'+esc(shortId(x.id))+'</div>'
       +'<div class="dim">'+esc(x.mode)+' · '+esc(x.activity)+' · 深度'+x.depth+' · 父 '+esc(x.parent)+'</div></div></div>'}
   h+='</section>';
 
@@ -219,23 +222,47 @@ function build(d){
 
 /* 数据没变就完全不碰 DOM —— 这样页面不再每 3 秒抽动一次，
  * 滚动位置和手指正在点的目标都不会被打断。 */
+/* 有东西在跑时，画面上的时长要一直往上走，所以即使数据没变也得重画一次；
+   反之没有任何运行中的东西时，那些时长不会再变，重画纯属白干。 */
+function busy(d){
+  if(!d)return false;
+  var t=d.totals||{};
+  if(t.jobsRunning||t.running)return true;
+  var i;
+  for(i=0;i<(d.subagents||[]).length;i++)if(d.subagents[i]&&d.subagents[i].activity==='running')return true;
+  return !!(d.workflows&&d.workflows.length)}
+
 function render(d,force){
   var sig;
-  try{sig=JSON.stringify(d)}catch(e){sig=String(Math.random())}
-  if(!force&&sig===LAST){meta.textContent=hhmmss(d.generatedAt||Date.now())+' 更新';return}
+  try{
+    /* 签名必须排除 generatedAt。
+     *
+     * 它是每次采集都不同的时间戳（Date.now()），带着它算签名，签名就永远在变 ——
+     * 「数据没变就完全不碰 DOM」会彻底失效，页面照样每 3 秒整页重建一次。
+     * 服务端的 ETag 用的是同一套归一化，两边保持一致：内容真变了才重画。 */
+    sig=JSON.stringify(d,function(k,v){return k==='generatedAt'?0:v})
+  }catch(e){sig=String(Math.random())}
+  /* 用本地时钟，不用 d.generatedAt：命中 304 时浏览器交回的是缓存里的旧响应体，
+     那个时间戳会冻结，「刚刚检查过」就成了假话。 */
+  if(!force&&sig===LAST&&!busy(d)){meta.textContent=hhmmss(Date.now())+' 已检查';return}
   LAST=sig;CACHE=d;
   var y=window.scrollY||window.pageYOffset||0;
   root.innerHTML=build(d);
   window.scrollTo(0,y);
-  meta.textContent=hhmmss(d.generatedAt||Date.now())+' 更新'}
+  meta.textContent=hhmmss(Date.now())+' 已检查'}
 
-function loadConvo(sid){
-  CONVO[sid]={loading:true,error:null,messages:[],total:0};
+/* 对话带 TTL：展开着的会话要能跟上新消息，不能冻结在第一次点开的那一刻。
+   折叠后不再续期，重新展开时才重取；正在请求中的不重复发。 */
+var CONVO_TTL=15000;
+function loadConvo(sid,force){
+  var c=CONVO[sid];
+  if(!force&&c&&!c.loading&&!c.error&&Date.now()-(c.at||0)<CONVO_TTL)return;
+  CONVO[sid]={loading:true,error:null,messages:[],total:0,at:Date.now()};
   if(CACHE)render(CACHE,true);
   fetch('/taskwatch/session?id='+encodeURIComponent(sid)+'&limit=20',{cache:'no-store'})
    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
-   .then(function(j){CONVO[sid]={loading:false,error:j.error||null,messages:j.messages||[],total:j.total||0};if(CACHE)render(CACHE,true)})
-   .catch(function(e){CONVO[sid]={loading:false,error:'读取失败：'+e,messages:[],total:0};if(CACHE)render(CACHE,true)})}
+   .then(function(j){CONVO[sid]={loading:false,error:j.error||null,messages:j.messages||[],total:j.total||0,at:Date.now()};if(CACHE)render(CACHE,true)})
+   .catch(function(e){CONVO[sid]={loading:false,error:'读取失败：'+e,messages:[],total:0,at:Date.now()};if(CACHE)render(CACHE,true)})}
 
 /* 事件委托挂在常驻容器上，所以内层 DOM 被重建也不会丢监听。 */
 root.addEventListener('click',function(ev){
@@ -244,24 +271,57 @@ root.addEventListener('click',function(ev){
     if(el.getAttribute&&el.getAttribute('data-sid')){
       var sid=el.getAttribute('data-sid');
       if(OPEN[sid])delete OPEN[sid];
-      else{OPEN[sid]=true;if(!CONVO[sid])loadConvo(sid)}
+      else{OPEN[sid]=true;loadConvo(sid)}
       if(CACHE)render(CACHE,true);
       return}
     el=el.parentNode}});
 
+var SEQ=0;
 function tick(){
-  fetch('/taskwatch/data',{cache:'no-store'})
+  if(document.hidden)return;
+  var mine=++SEQ;
+  /* no-cache（而不是 no-store）：请求照旧走服务器，但浏览器会带上
+     If-None-Match；内容没变时服务器回 304，手机上省的是整份 JSON 的流量。 */
+  fetch('/taskwatch/data',{cache:'no-cache'})
    .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
    .then(function(d){
+     /* 更早发出的响应可能晚回来，不能让它把新快照覆盖成旧的。 */
+     if(mine!==SEQ)return;
+     /* 宿主采集异常时回的是 200 + {error}：它是错误，不是数据。
+        当成数据画会渲染出一块「全部为 0」的假绿板 —— 对监控来说，
+        这比直接报错更危险，因为它看起来像「真的没有任务」。 */
+     if(d&&d.error){
+       FAILS++;
+       foot.textContent='采集失败：'+d.error;
+       meta.textContent='最后成功 '+hhmmss(CACHE&&CACHE.generatedAt||0);
+       return}
      FAILS=0;
      foot.textContent=d.offline?'离线快照 · 未读到 DSH':'只读视图 · 3 秒自动刷新';
-     render(d)})
+     render(d);
+     /* 展开着的会话续一次期（TTL 内不会真的发请求）。 */
+     Object.keys(OPEN).forEach(function(sid){loadConvo(sid)})})
    .catch(function(e){
+     if(mine!==SEQ)return;
      FAILS++;
      foot.textContent='连接失败（连续 '+FAILS+' 次）：'+e;
      meta.textContent='最后成功 '+hhmmss(CACHE&&CACHE.generatedAt||0)})}
-tick();setInterval(tick,3000);
-if('serviceWorker' in navigator){navigator.serviceWorker.register('/taskwatch/sw.js',{scope:'/taskwatch'}).catch(function(){})}
+
+/* 只在页面可见时轮询。
+ *
+ * 这个页面本来就是给手机用的，而手机最常见的状态是「揣在兜里、屏幕已熄」。
+ * 不暂停的话，一个后台标签页会永远每 3 秒发一次请求 —— 白耗流量和电。
+ * 回到前台时立刻补一次 tick，所以看到的数据不会是切回来那一刻的旧值。 */
+var TIMER=null;
+function startPolling(){
+  if(TIMER===null)TIMER=setInterval(tick,3000)}
+function stopPolling(){
+  if(TIMER!==null){clearInterval(TIMER);TIMER=null}}
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden)stopPolling();
+  else{tick();startPolling()}});
+
+tick();if(!document.hidden)startPolling();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/taskwatch/sw.js',{scope:'/taskwatch'}).catch(function(e){console.warn('taskwatch: service worker 注册失败',e)})}
 </script>
 </body>
 </html>
