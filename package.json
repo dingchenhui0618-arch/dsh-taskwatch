@@ -1,6 +1,6 @@
 {
   "name": "dsh-taskwatch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Read-only task monitor for DeepSeek Harness: sessions, background jobs, subagents, goals, workflows and pending approvals, as a phone-friendly page and a GUI sidebar panel. · DSH 只读任务监控：会话、后台任务、子代理、目标轮次、工作流与待审批，附手机页面与 GUI 侧边栏面板。",
   "type": "module",
   "main": "lib/index.js",

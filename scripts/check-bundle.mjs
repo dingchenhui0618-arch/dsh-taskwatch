@@ -13,7 +13,7 @@
  *   4. apply(fakeCtx) 是否真的往两个插槽各注册了一次
  */
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -117,6 +117,40 @@ check('注入 main', injected.includes('main'), injected.join(', '))
 check('插入了一个 <style> 节点', styleNodes.length === 1, `实际 ${styleNodes.length} 个`)
 check('style 节点带 data-dsh-taskwatch 标记',
   styleNodes[0] && styleNodes[0].attrs['data-dsh-taskwatch'] !== undefined)
+
+// --- 5. Host 半边的契约 ---
+//
+// 这一节是 2026-09-21 那次真实故障的回归防护。v1.0.0 漏了 inject，导致
+// ctx.get('webServer') 在组合期拿到 undefined，全部路由被静默跳过
+// （/taskwatch 一律 404）。客户端那半边当时检查得很细，宿主这半边却没人管，
+// 所以补上：宿主插件缺 name / inject / apply 中任何一个都必须构建失败。
+// Windows 上动态 import 绝对路径必须走 file:// URL，否则报 ERR_UNSUPPORTED_ESM_URL_SCHEME。
+const host = await import(pathToFileURL(join(ROOT, 'lib', 'index.js')).href)
+
+check('宿主导出 name 且与包名一致', host.name === pkg.name, String(host.name))
+check('宿主导出 apply 函数', typeof host.apply === 'function')
+check("宿主 inject 是数组且含 'webServer'",
+  Array.isArray(host.inject) && host.inject.includes('webServer'),
+  JSON.stringify(host.inject))
+
+// 路由注册全靠 webServer；少了它整页 404 而不报错，正是最难查的失败姿态。
+check('宿主 apply 声明了 1 个形参（ctx）', host.apply.length === 1, String(host.apply.length))
+
+const hostSrc = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
+check("宿主注册了 '/taskwatch' 路由", hostSrc.includes("'/taskwatch'"))
+check('宿主不提供任何写操作（只读承诺）',
+  !/req\.method\s*===\s*'POST'/.test(hostSrc) && !/method\s*===\s*'POST'/.test(hostSrc))
+
+// --- 6. 打包元数据 ---
+const patch = readFileSync(join(ROOT, pkg.dsh.bundle.patch), 'utf8')
+check('cordis.patch.yml 用包名引用插件', patch.includes(pkg.name), patch.trim())
+check('exports["./client"] 指向构建产物',
+  pkg.exports && pkg.exports['./client'] === './lib/client.js',
+  JSON.stringify(pkg.exports && pkg.exports['./client']))
+check("dsh.client.platform 为 web",
+  pkg.dsh.client && pkg.dsh.client.platform === 'web')
+check('files 含 lib 与 cordis.patch.yml',
+  pkg.files.includes('lib') && pkg.files.includes('cordis.patch.yml'))
 
 console.log(failures === 0 ? '\n全部通过' : `\n${failures} 项失败`)
 process.exit(failures === 0 ? 0 : 1)

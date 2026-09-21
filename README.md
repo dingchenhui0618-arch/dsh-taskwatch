@@ -150,10 +150,21 @@ PWA 外壳由中继本地提供（而不是转发上游），这样它不随上�
 ## 开发
 
 ```sh
-node scripts/check-bundle.mjs   # 客户端 bundle 的契约测试（15 项）
+node scripts/check-bundle.mjs   # 客户端 bundle + 宿主插件契约的测试（25 项）
 node scripts/make-icons.mjs     # 重新生成图标（自实现 PNG 编码，零依赖）
 node scripts/make-demo.mjs      # 生成 docs/demo.html（假数据，供截图与预览）
 ```
+
+`check-bundle.mjs` 不只检查客户端：它还**真的 import 宿主半边**，断言
+`name` / `apply` / `inject` 三个导出都在，并把 `cordis.patch.yml`、`exports`、
+`dsh` 元数据一并核对。
+
+为什么宿主也要钉住：Cordis 的 `inject` 决定框架等哪些服务就绪后才调用 `apply`。
+`webServer` 的服务是在启动阶段之后才发布的，而 `apply` 在组合期就会被调用——
+只写 `ctx.get('webServer')` 软读会在那一刻拿到 `undefined`，于是整段路由注册被
+静默跳过。现象是插件"装好了、也不报错，但 `/taskwatch` 一律 404"，极难定位。
+（v1.0.0 正是踩了这个坑。）同理 `kind:'prefix'` 与 `kind:'exact'` 都合法，但
+重复的 `(kind, path)` 会让 `register()` 抛错——所以路由路径也纳入断言。
 
 `scripts/make-icons.mjs` 是手写 PNG 编码（Node 内置 zlib + 自实现 CRC32），满幅不透明
 方形，图形落在中心 80% 安全区内，因此同一个文件既能当普通图标也能当 maskable。
