@@ -5,323 +5,918 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <meta name="robots" content="noindex,nofollow">
-<title>任务监控</title>
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="任务监控">
+<title>DSH 任务监控</title>
 <link rel="manifest" href="/taskwatch/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="/taskwatch/icon-192.png">
 <link rel="apple-touch-icon" href="/taskwatch/icon-192.png">
-<meta name="theme-color" content="#0f1115">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="任务监控">
 <style>
-:root{--bg:#0f1115;--card:#171a21;--line:#282d38;--fg:#e8ebf0;--dim:#98a1b3;--ok:#3ecf8e;--warn:#e2b23c;--err:#ef5f6b;--acc:#5b8cff}
-@media (prefers-color-scheme:light){:root{--bg:#f5f6f8;--card:#fff;--line:#e2e5ea;--fg:#16181d;--dim:#5f6879;--ok:#1f9d63;--warn:#9a7411;--err:#c5303c;--acc:#2f5fd0}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;-webkit-text-size-adjust:100%}
-header{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
-h1{margin:0;font-size:17px;font-weight:650;letter-spacing:.2px}
-#meta{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
-main{padding:14px 12px 40px;display:flex;flex-direction:column;gap:12px;max-width:860px;margin:0 auto}
-.chips{display:flex;gap:7px;flex-wrap:wrap}
-.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
-.chip b{color:var(--fg);font-weight:650}
-.card{border:1px solid var(--line);background:var(--card);border-radius:13px;padding:12px 14px}
-.card>h2{margin:0 0 8px;font-size:13px;font-weight:650;display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--fg)}
-.card.alert{border-color:var(--warn)}
-.card.alert.hot{border-color:var(--err)}
-.card.offline{border-color:var(--err);background:linear-gradient(0deg,rgba(239,95,107,.10),rgba(239,95,107,.10))}
-.n{font-size:11px;color:var(--dim);font-weight:500}
-.row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
-.row:first-of-type{border-top:0}
-.grow{flex:1;min-width:0}
-.name{font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dim{color:var(--dim);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.block{color:var(--dim);font-size:12px;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.right{flex:0 0 auto;color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums;text-align:right}
-.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;margin-top:6px;background:var(--dim)}
-.dot.run{background:var(--ok);box-shadow:0 0 0 3px rgba(62,207,142,.16)}
-.dot.warn{background:var(--warn)}
-.dot.err{background:var(--err)}
-.empty{color:var(--dim);font-size:12px}
-.bar{height:4px;border-radius:2px;background:var(--line);overflow:hidden;margin-top:5px}
-.bar>i{display:block;height:100%;background:var(--ok)}
-.bar>i.warn{background:var(--warn)}
-.bar>i.err{background:var(--err)}
-footer{color:var(--dim);font-size:11px;text-align:center;padding:0 16px calc(20px + env(safe-area-inset-bottom))}
+/* ---------------------------------------------------------------------------
+   手机对话页。
 
-/* 会话卡片：可点开。.sess 自带分隔线，避免行被包裹后丢掉 border-top。 */
-.sess{border-top:1px solid var(--line)}
-.sess:first-of-type{border-top:0}
-.sess>.row{border-top:0}
-.tap{cursor:pointer;-webkit-tap-highlight-color:transparent}
-.tap:active{background:rgba(128,140,170,.10);border-radius:8px}
-.tri{flex:0 0 auto;width:11px;color:var(--dim);font-size:11px;margin-top:5px;transition:transform .12s}
-.tri.open{transform:rotate(90deg);color:var(--acc)}
-.exp{padding:2px 0 12px 21px;display:flex;flex-direction:column;gap:9px}
-.sec{border-left:2px solid var(--line);padding-left:9px}
-.sec>h3{margin:0 0 3px;font-size:11px;font-weight:600;color:var(--dim)}
-.msg{border-left:2px solid var(--line);padding:1px 0 1px 9px}
-.msg.u{border-left-color:var(--ok)}
-.msg.a{border-left-color:var(--acc)}
-.msg .who{font-size:11px;color:var(--dim);display:flex;justify-content:space-between;gap:8px}
-.msg .tx{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12.5px;max-height:15em;overflow:auto}
-.msg .tls{font-size:10.5px;color:var(--dim);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin-top:1px}
-.warnbox{color:var(--err);font-size:12px;overflow-wrap:anywhere}
-.loading{color:var(--dim);font-size:12px}
+   设计目标只有一句：**小白点进来也看得懂**。
+   所以这里刻意不做仪表盘 —— 顶部一行说人话的状态，中间是对话，
+   底部是输入框；数据表格收进抽屉，想看才展开。
+
+   三条铁律（改这个文件时请保持）：
+     1. 宿主或模型来的文本一律先 esc() 再进 DOM。
+     2. 流式增量只追加到**那一个**气泡节点，不整页重建。
+     3. 工具名先翻译成人话再显示。
+--------------------------------------------------------------------------- */
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#282d38;
+  --fg:#e8ebf0; --dim:#98a1b3; --faint:#6b7488;
+  --accent:#4c8dff; --accent-fg:#fff;
+  --ok:#3ecf8e; --warn:#ffb454; --bad:#ff6b6b;
+  --bubble-user:#2b5fd9; --bubble-ai:#1e222b;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --panel2:#eef0f4; --line:#e0e3e9;
+    --fg:#12151b; --dim:#5b6472; --faint:#8b93a1;
+    --accent:#2563eb; --bubble-user:#2563eb; --bubble-ai:#fff;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--fg);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+textarea{font:inherit}
+
+/* ── 顶部 ───────────────────────────────────────────────────────────── */
+header{
+  flex:0 0 auto;background:var(--panel);border-bottom:1px solid var(--line);
+  padding-top:var(--safe-t);
+}
+.hrow{display:flex;align-items:center;gap:10px;padding:9px 12px}
+.sess{
+  flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  text-align:left;padding:2px 6px;border-radius:9px;
+}
+.sess:active{background:var(--panel2)}
+.sess .t{font-size:14.5px;font-weight:600;max-width:56vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sess .s{font-size:11.5px;color:var(--faint)}
+.iconbtn{
+  flex:0 0 auto;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
+  color:var(--dim);font-size:17px;
+}
+.iconbtn:active{background:var(--panel2)}
+
+/* 状态条：一句话说清现在什么情况 */
+#status{
+  display:flex;align-items:center;gap:8px;margin:0 12px 10px;padding:9px 12px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+  font-size:13.5px;color:var(--dim);text-align:left;width:calc(100% - 24px);
+}
+#status .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+#status.busy .dot{background:var(--accent);animation:pulse 1.1s ease-in-out infinite}
+#status.warn .dot{background:var(--warn)}
+#status.bad .dot{background:var(--bad)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+#status .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#status .chev{flex:0 0 auto;color:var(--faint);font-size:12px}
+
+/* ── 消息区 ─────────────────────────────────────────────────────────── */
+main{
+  flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;padding:14px 12px 6px;
+  display:flex;flex-direction:column;gap:10px;
+}
+.row{display:flex;flex-direction:column;max-width:100%}
+.row.me{align-items:flex-end}
+.row.ai{align-items:flex-start}
+.bub{
+  max-width:84%;padding:10px 13px;border-radius:16px;white-space:pre-wrap;
+  word-break:break-word;font-size:15.5px;
+}
+.me .bub{background:var(--bubble-user);color:#fff;border-bottom-right-radius:5px}
+.ai .bub{background:var(--bubble-ai);border:1px solid var(--line);border-bottom-left-radius:5px}
+.meta{font-size:11px;color:var(--faint);margin:3px 4px 0}
+
+/* 工具卡片：把内部工具名翻成人话，这是"看得懂进度"的关键 */
+.tool{
+  max-width:90%;margin-top:5px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:9px 12px;font-size:13.5px;
+}
+.tool .h{display:flex;align-items:center;gap:8px}
+.tool .h .n{font-weight:600}
+.tool .h .st{margin-left:auto;font-size:12px;color:var(--faint);flex:0 0 auto}
+.tool.run{border-color:rgba(76,141,255,.5)}
+.tool.run .sp{
+  flex:0 0 auto;width:12px;height:12px;border-radius:50%;
+  border:2px solid rgba(76,141,255,.3);
+  border-top-color:var(--accent);animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tool.ok .h .st{color:var(--ok)}
+.tool.no .h .st{color:var(--bad)}
+.tool .a{margin-top:4px;color:var(--dim);font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 空状态：第一眼必须知道"这是干什么的" */
+.empty{margin:auto 0;padding:20px 6px;text-align:center}
+.empty h2{margin:0 0 8px;font-size:19px}
+.empty p{margin:0 0 18px;color:var(--dim);font-size:14.5px;line-height:1.65}
+.chips{display:flex;flex-direction:column;gap:9px}
+.chip{
+  background:var(--panel);border:1px solid var(--line);border-radius:13px;
+  padding:12px 14px;font-size:15px;text-align:left;
+}
+.chip:active{background:var(--panel2)}
+
+.note{font-size:12.5px;color:var(--faint);text-align:center;padding:6px 16px}
+
+/* ── 输入区 ─────────────────────────────────────────────────────────── */
+footer{
+  flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);
+  padding:9px 12px calc(9px + var(--safe-b));
+}
+.composer{display:flex;align-items:flex-end;gap:9px}
+#input{
+  flex:1;min-height:44px;max-height:132px;resize:none;overflow-y:auto;
+  background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+  border-radius:14px;padding:11px 13px;font-size:16px;line-height:1.5;
+}
+#input:focus{outline:none;border-color:rgba(76,141,255,.55)}
+#send{
+  flex:0 0 auto;width:44px;height:44px;border-radius:14px;background:var(--accent);
+  color:var(--accent-fg);display:grid;place-items:center;font-size:18px;
+}
+#send:disabled{opacity:.4}
+#send.stop{background:var(--bad)}
+
+/* ── 抽屉 ───────────────────────────────────────────────────────────── */
+#sheet{
+  position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);
+  display:flex;align-items:flex-end;
+}
+#sheet[hidden]{display:none}
+.card{
+  width:100%;max-height:82vh;overflow-y:auto;background:var(--panel);
+  border-radius:18px 18px 0 0;padding:8px 0 calc(12px + var(--safe-b));
+  border-top:1px solid var(--line);
+}
+.card .grab{width:38px;height:4px;border-radius:99px;background:var(--line);margin:6px auto 10px}
+.card h3{margin:6px 16px 8px;font-size:13px;color:var(--faint);font-weight:600;letter-spacing:.03em}
+.item{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;font-size:15px;
+  text-align:left;width:100%;
+}
+.item:active{background:var(--panel2)}
+.item .g{flex:1;min-width:0}
+.item .g .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.item .g .s{font-size:12px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.item .r{flex:0 0 auto;font-size:12px;color:var(--faint)}
+.item.on .g .t{color:var(--accent);font-weight:600}
+.kv{display:flex;gap:10px;padding:9px 16px;font-size:14px;border-top:1px solid var(--line)}
+.kv .k{flex:0 0 88px;color:var(--dim)}
+.kv .v{flex:1;min-width:0;word-break:break-word}
+.pill{display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;margin:0 16px 8px;font-size:15px;width:calc(100% - 32px);text-align:left}
+.pill:active{background:var(--panel2)}
 </style>
 </head>
 <body>
-<header><h1>任务监控</h1><div id="meta">连接中…</div></header>
-<main id="root"></main>
-<footer id="foot">只读视图 · 3 秒自动刷新</footer>
+
+<header>
+  <div class="hrow">
+    <button id="sessBtn" class="sess" aria-label="切换会话">
+      <span class="t" id="sessTitle">任务监控</span>
+      <span class="s" id="sessSub">连接中…</span>
+    </button>
+    <button id="menuBtn" class="iconbtn" aria-label="菜单">☰</button>
+  </div>
+  <button id="status" aria-label="查看任务详情">
+    <span class="dot"></span>
+    <span class="txt" id="statusTxt">正在连接…</span>
+    <span class="chev">详情 ›</span>
+  </button>
+</header>
+
+<main id="log"></main>
+
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off"></textarea>
+    <button id="send" aria-label="发送">➤</button>
+  </div>
+</footer>
+
+<div id="sheet" hidden><div class="card" id="card"></div></div>
+
 <script>
-var root=document.getElementById('root'),meta=document.getElementById('meta'),foot=document.getElementById('foot');
-var ES={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
-function esc(s){return String(s===null||s===undefined?'':s).replace(/[&<>"']/g,function(c){return ES[c]})}
-/* 会话/工作流 id 很长，整条打在页面上会把行撑开。完整值仍留在 data-sid 上供点击
-   使用，这里只是显示得短一点 —— 注意这是排版考虑，不是安全手段：完整 id 依然在 DOM 里。 */
-function shortId(id){id=String(id||'');return id.length>14?id.slice(0,10)+'…':id}
-function ago(t,now){if(!t)return '—';var s=Math.max(0,Math.round((now-t)/1000));if(s<60)return s+'s 前';var m=Math.floor(s/60);if(m<60)return m+'m 前';var h=Math.floor(m/60);if(h<24)return h+'h 前';return Math.floor(h/24)+'d 前'}
-function dur(a,b,now){if(!a)return '—';var s=Math.max(0,Math.round(((b||now)-a)/1000));if(s<60)return s+'s';var m=Math.floor(s/60);if(m<60)return m+'m'+(s%60)+'s';var h=Math.floor(m/60);return h+'h'+(m%60)+'m'}
-function dot(status){var c=status==='running'?'run':(status==='stopping'?'warn':(status==='failed'||status==='killed'?'err':''));return '<span class="dot '+c+'"></span>'}
-function hhmmss(t){try{return new Date(t).toLocaleTimeString('zh-CN',{hour12:false})}catch(e){return '--:--:--'}}
-function chips(t){return '<div class="chips">'
- +'<span class="chip"><b>'+t.sessions+'</b> 会话</span>'
- +'<span class="chip"><b>'+t.running+'</b> 运行中</span>'
- +'<span class="chip"><b>'+t.jobs+'</b> 后台任务</span>'
- +'<span class="chip"><b>'+t.jobsRunning+'</b> 任务运行</span>'
- +'<span class="chip"><b>'+t.subagents+'</b> 子代理</span>'
- +'<span class="chip"><b>'+t.workflows+'</b> 工作流</span>'
- +'</div>'}
+'use strict';
+// ===========================================================================
+// 手机对话页 —— 与宿主 /taskwatch/chat/* 路由配套。
+//
+// 宿主侧只是把 DSH 自己的 sessionController 转出来，LLM 与流式协议都不在本插件里，
+// 所以这里也不需要任何模型概念：只认 wire 帧。
+//
+// 帧有三类：
+//   snapshot         开场快照（含最近 N 条历史）
+//   event            增量事件（user/message、assistant/message、tool/call、tool/result、
+//                    turn/start、turn/end）
+//   assistant-stream 逐字增量（frame.chunk.type === 'text-delta'）
+// ===========================================================================
 
-/* ---- 跨轮询保留的状态 ----------------------------------------------------
- * OPEN  : 会话 id -> true        展开的会话。轮询重建 DOM 后据此重新展开。
- * CONVO : 会话 id -> 对话缓存     点开时懒加载一次，之后轮询不再重复请求。
- * LAST  : 上一次数据的序列化      用于「数据没变就完全不碰 DOM」。
- * CACHE : 最后一次成功的数据对象  点击/对话到达时用它就地重画。
- * FAILS : 连续失败次数           用来把「断连」显式说出来。
- */
-var OPEN={},CONVO={},LAST='',CACHE=null,FAILS=0;
+var $ = function(id){ return document.getElementById(id) }
+var ESC = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ESC[c] })
+}
+function hhmm(t){
+  var d = t ? new Date(t) : new Date()
+  return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)
+}
+function shortId(id){ id = String(id||''); return id.length > 12 ? id.slice(0,8)+'…' : id }
 
-function byOwner(d,sid){
-  var out={jobs:[],subs:[],pend:[]},i;
-  for(i=0;i<d.jobs.length;i++)if(d.jobs[i].owner===sid)out.jobs.push(d.jobs[i]);
-  for(i=0;i<d.subagents.length;i++)if(d.subagents[i].parent===sid)out.subs.push(d.subagents[i]);
-  for(i=0;i<d.pending.length;i++)if(d.pending[i].session===sid)out.pend.push(d.pending[i]);
-  return out}
+// 工具名 → 人话。表里没有就显示原名，不隐藏、不猜。
+var TOOL = {
+  pwsh:'运行命令', read:'读取文件', write:'写入文件', edit:'修改文件',
+  glob:'查找文件', grep:'搜索内容', web_search:'联网搜索', web_fetch:'打开网页',
+  subagent:'派发子任务', subagent_fork:'派发子任务', todo_write:'更新任务清单',
+  skill:'加载技能', job_output:'读取后台任务', job_kill:'结束后台任务',
+  job_list:'查看后台任务', create_goal:'建立目标', update_goal:'更新目标',
+  present:'交付文件', ask_user_question:'向你提问', read_image:'看图',
+  cordis_define:'定义插件', cordis_run:'启动插件', cordis_inspect_self:'检查插件',
+  workflow:'运行工作流', ralph:'运行迭代循环'
+}
+function toolLabel(name){ return TOOL[name] || name || '操作' }
 
-function convoHtml(sid){
-  var c=CONVO[sid];
-  if(!c)return '';
-  if(c.loading)return '<div class="sec"><h3>最近对话</h3><div class="loading">读取中…</div></div>';
-  if(c.error)return '<div class="sec"><h3>最近对话</h3><div class="warnbox">'+esc(c.error)+'</div></div>';
-  if(!c.messages.length)return '<div class="sec"><h3>最近对话</h3><div class="empty">没有可显示的消息。</div></div>';
-  var h='<div class="sec"><h3>最近对话'+(c.total>c.messages.length?'（共 '+c.total+' 条，显示最后 '+c.messages.length+' 条）':'')+'</h3>';
-  for(var i=0;i<c.messages.length;i++){
-    var m=c.messages[i],u=m.role==='user';
-    h+='<div class="msg '+(u?'u':'a')+'"><div class="who"><span>'+(u?'你':'助手')+'</span>'
-      +(m.at?'<span>'+esc(hhmmss(m.at))+'</span>':'')+'</div>'
-      +(m.text?'<div class="tx">'+esc(m.text)+'</div>':'')
-      +((m.tools&&m.tools.length)?'<div class="tls">工具：'+esc(m.tools.join(' · '))+'</div>':'')
-      +'</div>'}
-  return h+'</div>'}
+// 从工具参数里挑一个最能说明"在干嘛"的片段。
+function argHint(raw){
+  var s = String(raw || '')
+  if (!s) return ''
+  try {
+    var o = JSON.parse(s)
+    if (o && typeof o === 'object') {
+      var keys = ['command','file_path','path','pattern','query','url','prompt','description','id','name']
+      for (var i = 0; i < keys.length; i++) {
+        var v = o[keys[i]]
+        if (typeof v === 'string' && v) return v.replace(/\s+/g,' ').slice(0, 160)
+      }
+      var ks = Object.keys(o)
+      if (ks.length && typeof o[ks[0]] === 'string') return o[ks[0]].replace(/\s+/g,' ').slice(0, 160)
+    }
+  } catch (e) { /* 不是 JSON：按原文截断 */ }
+  return s.replace(/\s+/g,' ').slice(0, 160)
+}
 
-function expHtml(x,d){
-  var o=byOwner(d,x.id),h='<div class="exp">';
-  if(x.goal){
-    h+='<div class="sec"><h3>目标</h3>'
-      +'<div class="dim">阶段 '+esc(x.goal.phase)+' · 轮次 '+x.goal.roundsStarted+'/'+x.goal.maxGoalRounds
-      +(x.goal.activation==='disarmed'?' · 未续跑':'')+'</div>'
-      +((x.goal.objective)?'<div class="block">'+esc(x.goal.objective)+'</div>':'')
-      +((x.goal.blockedMessage)?'<div class="warnbox">阻塞：'+esc(x.goal.blockedMessage)+'</div>':'')
-      +'</div>'}
-  if(o.pend.length){h+='<div class="sec"><h3>待你介入</h3>';
-    for(var i=0;i<o.pend.length;i++){var p=o.pend[i];h+='<div class="name">'+esc(p.title)+'</div>'+((p.detail)?'<div class="dim">'+esc(p.detail)+'</div>':'')+'<div class="mono">'+esc(p.kind)+'</div>'}
-    h+='</div>'}
-  h+='<div class="sec"><h3>后台任务（'+o.jobs.length+'）</h3>';
-  if(!o.jobs.length)h+='<div class="empty">这个会话没有后台任务。</div>';
-  else for(var j=0;j<o.jobs.length;j++){var b=o.jobs[j];
-    h+='<div class="row">'+dot(b.status)+'<div class="grow"><div class="name">'+esc(b.label||b.id)+'</div>'
-      +'<div class="mono">'+esc(b.id)+' · '+esc(b.kind)+' · '+esc(b.status)+'</div>'
-      +((b.detail)?'<div class="dim">'+esc(b.detail)+'</div>':'')
-      +'</div><div class="right">'+dur(b.startedAt,b.finishedAt,d.generatedAt||Date.now())+'</div></div>'}
-  h+='</div>';
-  h+='<div class="sec"><h3>子代理（'+o.subs.length+'）</h3>';
-  if(!o.subs.length)h+='<div class="empty">这个会话没有子代理。</div>';
-  else for(var k=0;k<o.subs.length;k++){var s=o.subs[k];
-    h+='<div class="row">'+dot(s.activity==='running'?'running':'idle')+'<div class="grow"><div class="name">'+esc(s.label||s.id)+'</div>'
-      +'<div class="dim">'+esc(s.mode)+' · '+esc(s.activity)+' · 深度'+s.depth+'</div></div></div>'}
-  h+='</div>';
-  h+=convoHtml(x.id);
-  return h+'</div>'}
+// 只认 text 块；其它类型不硬塞成文字。
+function blocksText(blocks){
+  var out = ''
+  if (!Array.isArray(blocks)) return out
+  for (var i = 0; i < blocks.length; i++) {
+    var b = blocks[i]
+    if (b && b.type === 'text' && typeof b.text === 'string') out += (out ? '\n' : '') + b.text
+  }
+  return out
+}
 
-function build(d){
-  var now=d.generatedAt||Date.now(),h='',i,x;
-  if(d.offline)h+='<section class="card offline"><h2>离线快照</h2><div class="warnbox">没读到 DSH，下面是空数据，不代表真的没有任务。</div></section>';
-  h+=chips(d.totals);
-  h+='<section class="card'+(d.totals.pending?' alert hot':'')+'"><h2>需要你介入<span class="n">'+d.pending.length+'</span></h2>';
-  if(!d.pending.length)h+='<div class="empty">当前没有等待中的审批或提问。</div>';
-  else for(i=0;i<d.pending.length;i++){x=d.pending[i];
-    h+='<div class="row">'+dot('warn')+'<div class="grow"><div class="name">'+esc(x.title)+'</div>'
-      +((x.detail)?'<div class="dim">'+esc(x.detail)+'</div>':'')
-      +'<div class="mono">'+esc(x.kind)+' · '+esc(x.session)+'</div></div><div class="right">'+ago(x.at,now)+'</div></div>'}
-  h+='</section>';
+// ---------------------------------------------------------------------------
+// 状态
+// ---------------------------------------------------------------------------
+var S = {
+  sessionId: '',
+  title: '',
+  sessions: [],
+  items: [],
+  seq: 0,
+  running: false,
+  es: null,
+  streaming: null,
+  pending: null,
+  chatReady: true
+}
 
-  h+='<section class="card"><h2>会话<span class="n">'+d.sessions.length+' · 点开看详情</span></h2>';
-  if(!d.sessions.length)h+='<div class="empty">没有活着的会话。</div>';
-  else for(i=0;i<d.sessions.length&&i<40;i++){x=d.sessions[i];
-    var open=!!OPEN[x.id];
-    h+='<div class="sess"><div class="row tap" data-sid="'+esc(x.id)+'">'
-      +'<span class="tri'+(open?' open':'')+'">▶</span>'
-      +dot(x.running?'running':(x.activeJobs?'stopping':'idle'))
-      +'<div class="grow"><div class="name">'+esc(x.title||x.id)+'</div>'
-      +'<div class="mono">'+esc(shortId(x.id))+'</div>'
-      +'<div class="dim">'+(x.running?'运行中':'空闲')+((x.activeJobs)?' · '+x.activeJobs+' 个任务在跑':'')+((x.live)?'':' · 仅日志')+((x.origin==='subagent')?' · 子代理':'')+((x.depth)?' · 深度'+x.depth:'')+((x.preset)?' · '+esc(x.preset):'')+'</div>'
-      /* 目标块在展开后的详情里会完整再现（阶段/轮次/objective/阻塞），
-       * 所以展开时这里收起来 —— 否则同一屏里同样的字出现两遍，看着像 bug。
-       * 收起不会丢信息：阻塞原因在详情里是更醒目的 warnbox。 */
-      +((x.goal&&!open)?'<div class="dim">目标 '+esc(x.goal.phase)+' · 轮次 '+x.goal.roundsStarted+'/'+x.goal.maxGoalRounds+(x.goal.activation==='disarmed'?' · 未续跑':'')+'</div>':'')
-      +((x.goal&&x.goal.objective&&!open)?'<div class="block">'+esc(x.goal.objective)+'</div>':'')
-      +((x.goal&&x.goal.blockedMessage&&!open)?'<div class="block">阻塞：'+esc(x.goal.blockedMessage)+'</div>':'')
-      +((x.goal&&x.goal.maxGoalRounds&&!open)?'<div class="bar"><i class="'+(x.goal.phase==='blocked'?'err':(x.goal.phase==='paused'?'warn':''))+'" style="width:'+Math.min(100,Math.round(100*x.goal.roundsStarted/x.goal.maxGoalRounds))+'%"></i></div>':'')
-      +'</div><div class="right">'+ago(x.lastActivity,now)+'</div></div>'
-      +(open?expHtml(x,d):'')
-      +'</div>'}
-  if(d.sessions.length>40)h+='<div class="empty">还有 '+(d.sessions.length-40)+' 条未显示</div>';
-  h+='</section>';
+// 冷会话标题缓存。
+//
+// 宿主侧 SessionSummary **没有** title 字段，所以列表里冷会话只能退化成目录名
+// （实测 60 条全叫 "Projects"，完全没法挑）。真标题要从事件日志里取一次
+// （/taskwatch/chat/titles）。结果缓存在本机 localStorage：
+// 只有第一次打开列表会慢一下，之后直接命中。
+var titles = {}
+try { titles = JSON.parse(localStorage.getItem('taskwatch.titles') || '{}') || {} } catch (e) { titles = {} }
 
-  h+='<section class="card"><h2>后台任务<span class="n">'+d.jobs.length+'</span></h2>';
-  if(!d.jobs.length)h+='<div class="empty">没有后台任务。</div>';
-  else for(i=0;i<d.jobs.length&&i<40;i++){x=d.jobs[i];
-    h+='<div class="row">'+dot(x.status)+'<div class="grow"><div class="name">'+esc(x.label||x.id)+'</div>'
-      +'<div class="mono">'+esc(x.id)+' · '+esc(x.kind)+' · '+esc(x.status)+'</div>'
-      +((x.detail)?'<div class="dim">'+esc(x.detail)+'</div>':'')
-      +'</div><div class="right">'+dur(x.startedAt,x.finishedAt,now)+'</div></div>'}
-  h+='</section>';
+// ---------------------------------------------------------------------------
+// 归一化
+// ---------------------------------------------------------------------------
+function normUser(d){
+  // 工具结果同样是 role:'user'，但它不是"人说的话"，必须挡掉。
+  if (d && d.source && d.source.kind === 'tool') return null
+  var text = blocksText(d && d.content)
+  if (!text) return null
+  return { kind:'user', text:text }
+}
+function normAssistant(d){
+  var m = d && d.message
+  var text = blocksText(m && m.content)
+  if (!text) return null
+  return { kind:'assistant', text:text, interrupted: !!(d && d.interrupted) }
+}
+function toolItem(name, args, callId, status){
+  return { kind:'tool', callId:String(callId||''), name:name||'', hint:argHint(args), status:status }
+}
+// tool/result 的 callId 在 data.message.source.callId —— **不在顶层**。
+// 2026-09-22 实测踩过：按顶层 d.callId 读会拿到 undefined，于是每来一个工具结果
+// 都会新插一张错卡，而不是把原来那张改成「完成」。这类错误静态检查看不见，
+// 只有真跑一轮带工具调用的对话才会暴露。
+function resultCallId(d){
+  if (!d) return ''
+  if (d.message && d.message.source && d.message.source.callId) return String(d.message.source.callId)
+  var c = d.message && Array.isArray(d.message.content) ? d.message.content : null
+  if (c && c[0] && c[0].toolCallId) return String(c[0].toolCallId)
+  return ''
+}
+function markTool(callId, failed){
+  var id = String(callId||'')
+  for (var i = S.items.length - 1; i >= 0; i--) {
+    if (S.items[i].kind === 'tool' && S.items[i].callId === id) {
+      S.items[i].status = failed ? 'no' : 'ok'
+      return i
+    }
+  }
+  S.items.push(toolItem('', '', id, failed ? 'no' : 'ok'))
+  return S.items.length - 1
+}
 
-  h+='<section class="card"><h2>子代理树<span class="n">'+d.subagents.length+'</span></h2>';
-  if(!d.subagents.length)h+='<div class="empty">没有子代理。</div>';
-  else for(i=0;i<d.subagents.length&&i<40;i++){x=d.subagents[i];
-    h+='<div class="row">'+dot(x.activity==='running'?'running':'idle')+'<div class="grow"><div class="name">'+esc(x.label||x.id)+'</div>'
-      +'<div class="mono">'+esc(shortId(x.id))+'</div>'
-      +'<div class="dim">'+esc(x.mode)+' · '+esc(x.activity)+' · 深度'+x.depth+' · 父 '+esc(x.parent)+'</div></div></div>'}
-  h+='</section>';
+function acceptEvent(ev){
+  if (!ev || typeof ev !== 'object') return
+  var t = ev.type, d = ev.data
+  if (typeof ev.seq === 'number' && ev.seq > S.seq) S.seq = ev.seq
+  if (t === 'user/message') {
+    var u = normUser(d)
+    if (u) { S.items.push(u); dropPending(); renderAt(S.items.length - 1) }
+  } else if (t === 'assistant/message') {
+    var a = normAssistant(d)
+    finishStreaming()
+    if (a) { S.items.push(a); renderAt(S.items.length - 1) }
+  } else if (t === 'tool/call') {
+    S.items.push(toolItem(d && d.name, d && d.arguments, d && d.callId, 'run'))
+    renderAt(S.items.length - 1)
+  } else if (t === 'tool/result') {
+    renderAt(markTool(resultCallId(d), !!(d && d.error)))
+  } else if (t === 'session/title') {
+    setTitle(d && d.title)
+  } else if (t === 'turn/start') {
+    S.running = true; syncSend()
+  } else if (t === 'turn/end') {
+    S.running = false; finishStreaming(); syncSend()
+  }
+}
 
-  h+='<section class="card"><h2>工作流<span class="n">'+d.workflows.length+'</span></h2>';
-  if(!d.workflows.length)h+='<div class="empty">没有运行中的工作流。</div>';
-  else for(i=0;i<d.workflows.length;i++){x=d.workflows[i];
-    h+='<div class="row">'+dot('running')+'<div class="grow"><div class="name">'+esc(x.name||x.id)+'</div>'
-      +'<div class="dim">阶段：'+esc(x.phase||'—')+'</div>'
-      +'<div class="mono">'+esc(x.id)+' · '+x.logs+' 条日志</div></div><div class="right">'+dur(x.startedAt,0,now)+'</div></div>'}
-  h+='</section>';
+function applySnapshot(f){
+  S.items = []
+  S.seq = typeof f.cursor === 'number' ? f.cursor : 0
+  var recs = Array.isArray(f.records) ? f.records : []
+  for (var i = 0; i < recs.length; i++) {
+    var r = recs[i]
+    if (!r || r.type !== 'event' || !r.event) continue
+    var ev = r.event, d = ev.data
+    if (typeof ev.seq === 'number' && ev.seq > S.seq) S.seq = ev.seq
+    if (ev.type === 'user/message') { var u = normUser(d); if (u) S.items.push(u) }
+    else if (ev.type === 'assistant/message') { var a = normAssistant(d); if (a) S.items.push(a) }
+    else if (ev.type === 'tool/call') S.items.push(toolItem(d && d.name, d && d.arguments, d && d.callId, 'run'))
+    else if (ev.type === 'tool/result') markTool(resultCallId(d), !!(d && d.error))
+    else if (ev.type === 'session/title') pendingTitle = d && d.title
+    else if (ev.type === 'turn/start') S.running = true
+    else if (ev.type === 'turn/end') S.running = false
+  }
+  S.pending = null
+  S.streaming = null
+  renderAll()
+  if (pendingTitle) setTitle(pendingTitle)
+  pendingTitle = ''
+  syncSend()
+}
 
-  if(d.errors&&d.errors.length)h+='<section class="card"><h2>采集诊断</h2>'+d.errors.map(function(e){return '<div class="mono">'+esc(e)+'</div>'}).join('')+'</section>';
-  return h}
+// ---------------------------------------------------------------------------
+// 渲染
+// ---------------------------------------------------------------------------
+var log = $('log')
+var pendingTitle = ''
 
-/* 数据没变就完全不碰 DOM —— 这样页面不再每 3 秒抽动一次，
- * 滚动位置和手指正在点的目标都不会被打断。 */
-/* 有东西在跑时，画面上的时长要一直往上走，所以即使数据没变也得重画一次；
-   反之没有任何运行中的东西时，那些时长不会再变，重画纯属白干。 */
-function busy(d){
-  if(!d)return false;
-  var t=d.totals||{};
-  if(t.jobsRunning||t.running)return true;
-  var i;
-  for(i=0;i<(d.subagents||[]).length;i++)if(d.subagents[i]&&d.subagents[i].activity==='running')return true;
-  return !!(d.workflows&&d.workflows.length)}
+function nearBottom(){ return log.scrollHeight - log.scrollTop - log.clientHeight < 90 }
+function toBottom(){ log.scrollTop = log.scrollHeight }
+function rowNode(cls){ var r = document.createElement('div'); r.className = 'row ' + cls; return r }
+function bubNode(text){
+  var b = document.createElement('div')
+  b.className = 'bub'
+  b.textContent = text            // 永远走 textContent：模型文本绝不进 innerHTML
+  return b
+}
+function toolNode(it){
+  var d = document.createElement('div')
+  d.className = 'tool ' + (it.status === 'run' ? 'run' : it.status === 'no' ? 'no' : 'ok')
+  var head = document.createElement('div')
+  head.className = 'h'
+  if (it.status === 'run') {
+    var sp = document.createElement('span'); sp.className = 'sp'; head.appendChild(sp)
+  } else {
+    var ic = document.createElement('span')
+    ic.style.flex = '0 0 auto'
+    ic.textContent = it.status === 'no' ? '✕' : '✓'
+    head.appendChild(ic)
+  }
+  var nm = document.createElement('span'); nm.className = 'n'; nm.textContent = toolLabel(it.name)
+  head.appendChild(nm)
+  var st = document.createElement('span'); st.className = 'st'
+  st.textContent = it.status === 'run' ? '进行中' : (it.status === 'no' ? '失败' : '完成')
+  head.appendChild(st)
+  d.appendChild(head)
+  if (it.hint) {
+    var a = document.createElement('div'); a.className = 'a'; a.textContent = it.hint
+    d.appendChild(a)
+  }
+  return d
+}
+function nodeFor(it, idx){
+  var r = rowNode(it.kind === 'user' ? 'me' : 'ai')
+  r.setAttribute('data-i', String(idx))
+  if (it.kind === 'tool') { r.appendChild(toolNode(it)); return r }
+  r.appendChild(bubNode(it.text))
+  var m = document.createElement('div')
+  m.className = 'meta'
+  m.textContent = it.kind === 'user' ? '你' : (it.interrupted ? '助手 · 已中断' : '助手')
+  r.appendChild(m)
+  return r
+}
 
-function render(d,force){
-  var sig;
-  try{
-    /* 签名必须排除 generatedAt。
-     *
-     * 它是每次采集都不同的时间戳（Date.now()），带着它算签名，签名就永远在变 ——
-     * 「数据没变就完全不碰 DOM」会彻底失效，页面照样每 3 秒整页重建一次。
-     * 服务端的 ETag 用的是同一套归一化，两边保持一致：内容真变了才重画。 */
-    sig=JSON.stringify(d,function(k,v){return k==='generatedAt'?0:v})
-  }catch(e){sig=String(Math.random())}
-  /* 用本地时钟，不用 d.generatedAt：命中 304 时浏览器交回的是缓存里的旧响应体，
-     那个时间戳会冻结，「刚刚检查过」就成了假话。 */
-  if(!force&&sig===LAST&&!busy(d)){meta.textContent=hhmmss(Date.now())+' 已检查';return}
-  LAST=sig;CACHE=d;
-  var y=window.scrollY||window.pageYOffset||0;
-  root.innerHTML=build(d);
-  window.scrollTo(0,y);
-  meta.textContent=hhmmss(Date.now())+' 已检查'}
+/** 全量重建：只在开场快照时用。 */
+function renderAll(){
+  log.innerHTML = ''
+  if (!S.items.length && S.chatReady) { renderEmpty(); return }
+  var frag = document.createDocumentFragment()
+  for (var i = 0; i < S.items.length; i++) frag.appendChild(nodeFor(S.items[i], i))
+  log.appendChild(frag)
+  renderPending()
+  toBottom()
+}
 
-/* 对话带 TTL：展开着的会话要能跟上新消息，不能冻结在第一次点开的那一刻。
-   折叠后不再续期，重新展开时才重取；正在请求中的不重复发。 */
-var CONVO_TTL=15000;
-function loadConvo(sid,force){
-  var c=CONVO[sid];
-  if(!force&&c&&!c.loading&&!c.error&&Date.now()-(c.at||0)<CONVO_TTL)return;
-  CONVO[sid]={loading:true,error:null,messages:[],total:0,at:Date.now()};
-  if(CACHE)render(CACHE,true);
-  fetch('/taskwatch/session?id='+encodeURIComponent(sid)+'&limit=20',{cache:'no-store'})
-   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
-   .then(function(j){CONVO[sid]={loading:false,error:j.error||null,messages:j.messages||[],total:j.total||0,at:Date.now()};if(CACHE)render(CACHE,true)})
-   .catch(function(e){CONVO[sid]={loading:false,error:'读取失败：'+e,messages:[],total:0,at:Date.now()};if(CACHE)render(CACHE,true)})}
-
-/* 事件委托挂在常驻容器上，所以内层 DOM 被重建也不会丢监听。 */
-root.addEventListener('click',function(ev){
-  var el=ev.target;
-  while(el&&el!==root){
-    if(el.getAttribute&&el.getAttribute('data-sid')){
-      var sid=el.getAttribute('data-sid');
-      if(OPEN[sid])delete OPEN[sid];
-      else{OPEN[sid]=true;loadConvo(sid)}
-      if(CACHE)render(CACHE,true);
-      return}
-    el=el.parentNode}});
-
-var SEQ=0;
-function tick(){
-  if(document.hidden)return;
-  var mine=++SEQ;
-  /* no-cache（而不是 no-store）：请求照旧走服务器，但浏览器会带上
-     If-None-Match；内容没变时服务器回 304，手机上省的是整份 JSON 的流量。 */
-  fetch('/taskwatch/data',{cache:'no-cache'})
-   .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
-   .then(function(d){
-     /* 更早发出的响应可能晚回来，不能让它把新快照覆盖成旧的。 */
-     if(mine!==SEQ)return;
-     /* 宿主采集异常时回的是 200 + {error}：它是错误，不是数据。
-        当成数据画会渲染出一块「全部为 0」的假绿板 —— 对监控来说，
-        这比直接报错更危险，因为它看起来像「真的没有任务」。 */
-     if(d&&d.error){
-       FAILS++;
-       foot.textContent='采集失败：'+d.error;
-       meta.textContent='最后成功 '+hhmmss(CACHE&&CACHE.generatedAt||0);
-       return}
-     FAILS=0;
-     foot.textContent=d.offline?'离线快照 · 未读到 DSH':'只读视图 · 3 秒自动刷新';
-     render(d);
-     /* 展开着的会话续一次期（TTL 内不会真的发请求）。 */
-     Object.keys(OPEN).forEach(function(sid){loadConvo(sid)})})
-   .catch(function(e){
-     if(mine!==SEQ)return;
-     FAILS++;
-     foot.textContent='连接失败（连续 '+FAILS+' 次）：'+e;
-     meta.textContent='最后成功 '+hhmmss(CACHE&&CACHE.generatedAt||0)})}
-
-/* 只在页面可见时轮询。
+/** 增量：按序号**就地替换**那一条。
  *
- * 这个页面本来就是给手机用的，而手机最常见的状态是「揣在兜里、屏幕已熄」。
- * 不暂停的话，一个后台标签页会永远每 3 秒发一次请求 —— 白耗流量和电。
- * 回到前台时立刻补一次 tick，所以看到的数据不会是切回来那一刻的旧值。 */
-var TIMER=null;
-function startPolling(){
-  if(TIMER===null)TIMER=setInterval(tick,3000)}
-function stopPolling(){
-  if(TIMER!==null){clearInterval(TIMER);TIMER=null}}
-document.addEventListener('visibilitychange',function(){
-  if(document.hidden)stopPolling();
-  else{tick();startPolling()}});
+ *  S.items 只可能"尾部追加"或"原地改状态"（工具结果会把对应那张卡从进行中改成
+ *  完成），所以序号是稳定的 —— 用 data-i 定位旧节点替换即可。
+ *  早先的版本靠"最后一张卡的标签是否相同"来判断该替换哪张，脆弱且会插错；
+ *  实测一次带工具调用的对话就能看出来，所以改成了按序号。
+ */
+function renderAt(idx){
+  if (idx < 0 || idx >= S.items.length) return
+  if (log.querySelector('.empty')) log.innerHTML = ''
+  var stick = nearBottom()
+  var n = nodeFor(S.items[idx], idx)
+  var old = log.querySelector('[data-i="' + idx + '"]')
+  if (old) old.replaceWith(n)
+  else log.appendChild(n)
+  renderPending()
+  if (stick) toBottom()
+}
 
-tick();if(!document.hidden)startPolling();
-if('serviceWorker' in navigator){navigator.serviceWorker.register('/taskwatch/sw.js',{scope:'/taskwatch'}).catch(function(e){console.warn('taskwatch: service worker 注册失败',e)})}
+function renderEmpty(){
+  log.innerHTML = ''
+  var d = document.createElement('div')
+  d.className = 'empty'
+  var h2 = document.createElement('h2'); h2.textContent = '👋 在这里跟我说话就行'
+  var p = document.createElement('p')
+  p.innerHTML = '我会在这台电脑上干活，进度直接显示在这里。<br>想看还有几个任务在跑，点上面的状态条。'
+  d.appendChild(h2); d.appendChild(p)
+  var box = document.createElement('div'); box.className = 'chips'
+  var says = ['现在什么情况？', '还有几个任务在跑？', '帮我看一下有没有卡住的地方']
+  for (var i = 0; i < says.length; i++) {
+    var c = document.createElement('button')
+    c.className = 'chip'
+    c.textContent = says[i]
+    c.setAttribute('data-say', says[i])
+    box.appendChild(c)
+  }
+  d.appendChild(box)
+  log.appendChild(d)
+  var cs = d.querySelectorAll('.chip')
+  for (var k = 0; k < cs.length; k++) {
+    cs[k].addEventListener('click', function(){ send(this.getAttribute('data-say')) })
+  }
+}
+
+/** 已发出但还没落进日志的气泡：让"点了发送"立刻有反馈。 */
+function renderPending(){
+  var old = log.querySelector('.row.pending')
+  if (old) old.remove()
+  if (!S.pending) return
+  var r = rowNode('me')
+  r.classList.add('pending')
+  r.appendChild(bubNode(S.pending))
+  var m = document.createElement('div')
+  m.className = 'meta'
+  m.textContent = '发送中…'
+  r.appendChild(m)
+  log.appendChild(r)
+  toBottom()
+}
+function dropPending(){
+  if (!S.pending) return
+  S.pending = null
+  var old = log.querySelector('.row.pending')
+  if (old) old.remove()
+}
+
+/** 逐字输出：只改一个节点的文本，绝不整页重建。 */
+function streamText(txt){
+  if (!S.streaming) {
+    var r = rowNode('ai')
+    r.appendChild(bubNode(''))
+    log.appendChild(r)
+    S.streaming = { row:r, bub:r.lastElementChild, text:'' }
+  }
+  S.streaming.text += txt
+  S.streaming.bub.textContent = S.streaming.text
+  if (nearBottom()) toBottom()
+}
+function finishStreaming(){ S.streaming = null }
+
+// ---------------------------------------------------------------------------
+// 流式连接
+// ---------------------------------------------------------------------------
+var SEQ = 0
+function openStream(){
+  if (S.es) { try { S.es.close() } catch (e) {} S.es = null }
+  if (!S.sessionId) return
+  var mine = ++SEQ
+  setSub('连接中…')
+  var es = new EventSource('/taskwatch/chat/stream?sessionId=' + encodeURIComponent(S.sessionId))
+  S.es = es
+  es.onopen = function(){ if (mine === SEQ) setSub('') }
+  es.onmessage = function(msg){
+    if (mine !== SEQ) return          // 切会话后的旧连接，直接丢弃
+    var f
+    try { f = JSON.parse(msg.data) } catch (e) { return }
+    if (!f) return
+    if (f.type === 'snapshot') { applySnapshot(f); setSub(''); return }
+    if (f.type === 'event') { acceptEvent(f.event); return }
+    if (f.type === 'assistant-stream') {
+      var fr = f.frame
+      if (fr && fr.type === 'start') { S.running = true; syncSend() }
+      else if (fr && fr.type === 'end') { finishStreaming() }
+      else if (fr && fr.type === 'chunk' && fr.chunk
+               && fr.chunk.type === 'text-delta' && typeof fr.chunk.text === 'string') {
+        streamText(fr.chunk.text)
+        if (!S.running) { S.running = true; syncSend() }
+      }
+      return
+    }
+    if (f.type === 'taskwatch-error') { setSub('出错：' + (f.message || '')); return }
+  }
+  es.onerror = function(){
+    if (mine !== SEQ) return
+    setSub('连接中断，重连中…')   // EventSource 自带重连，不主动再开一条
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 交互
+// ---------------------------------------------------------------------------
+function syncSend(){
+  var b = $('send')
+  if (S.running) { b.textContent = '■'; b.classList.add('stop'); b.setAttribute('aria-label','停止') }
+  else { b.textContent = '➤'; b.classList.remove('stop'); b.setAttribute('aria-label','发送') }
+}
+function setSub(t){ $('sessSub').textContent = t || '' }
+// 会话标题。开场快照和后续事件里都会带 session/title 帧，
+// 所以冷会话一旦被选中，顶部立刻能显示真名（不必等它变热）。
+function setTitle(t){
+  if (!t) return
+  S.title = String(t)
+  $('sessTitle').textContent = S.title
+}
+
+function syncStatus(){
+  var t = $('statusTxt'), box = $('status')
+  if (!lastData) { t.textContent = '正在读取状态…'; return }
+  var d = lastData
+  if (d.error) { box.className = 'bad'; t.textContent = '读不到状态：' + d.error; return }
+  // service worker 的离线兜底用的是 offline:true + errors[]（见 lib/sw.js）。
+  // 不认这个形状的话，断网时会显示成"一切正常，没有任务在跑" —— 对监控来说，
+  // 把"读不到"说成"没事"是最坏的一种错。
+  if (d.offline || (d.errors && d.errors.length)) {
+    box.className = 'bad'
+    t.textContent = '连不上电脑：' + (d.errors && d.errors[0] ? d.errors[0] : '读不到状态')
+    return
+  }
+  var tot = d.totals || {}
+  var busy = (tot.jobsRunning || 0) + (tot.running || 0)
+  var bits = []
+  if ((tot.pending || 0) > 0) { box.className = 'warn'; bits.push('有 ' + tot.pending + ' 件事在等你') }
+  else if (busy > 0) { box.className = 'busy'; bits.push(busy + ' 个任务正在跑') }
+  else { box.className = ''; bits.push('一切正常，没有任务在跑') }
+  if ((tot.sessions || 0) > 0) bits.push(tot.sessions + ' 个会话')
+  if ((tot.subagents || 0) > 0) bits.push(tot.subagents + ' 个子代理')
+  t.textContent = bits.join(' · ')
+}
+
+// ---------------------------------------------------------------------------
+// 网络
+// ---------------------------------------------------------------------------
+async function post(url, body){
+  var r = await fetch(url, {
+    method:'POST',
+    headers:{ 'content-type':'application/json' },
+    body: JSON.stringify(body || {}),
+    cache:'no-store'
+  })
+  if (r.status === 404) throw new Error('宿主没有注册这个接口')
+  var d = await r.json().catch(function(){ return { error:'HTTP ' + r.status } })
+  if (d && d.error) throw new Error(d.error)
+  return d
+}
+
+async function send(text){
+  text = String(text == null ? $('input').value : text)
+  if (!text.trim()) return
+  if (!S.sessionId) await ensureSession()
+  if (!S.sessionId) { setSub('还没有可用会话，点右上角开一个'); return }
+  S.pending = text
+  renderPending()
+  $('input').value = ''
+  autoGrow()
+  try {
+    await post('/taskwatch/chat/send', {
+      sessionId: S.sessionId,
+      text: text,
+      timeZone: (Intl.DateTimeFormat().resolvedOptions().timeZone || '')
+    })
+    S.running = true
+    syncSend()
+  } catch (e) {
+    S.pending = null
+    renderPending()
+    setSub('发送失败：' + e.message)
+    $('input').value = text
+    autoGrow()
+  }
+}
+
+async function stop(){
+  try {
+    await post('/taskwatch/chat/cancel', { sessionId: S.sessionId })
+    S.running = false
+    finishStreaming()
+    syncSend()
+  } catch (e) { setSub('停止失败：' + e.message) }
+}
+
+function autoGrow(){
+  var el = $('input')
+  el.style.height = 'auto'
+  el.style.height = Math.min(132, el.scrollHeight) + 'px'
+}
+
+// ---------------------------------------------------------------------------
+// 抽屉
+// ---------------------------------------------------------------------------
+var sheet = $('sheet'), card = $('card')
+function closeSheet(){ sheet.hidden = true; card.innerHTML = '' }
+sheet.addEventListener('click', function(e){ if (e.target === sheet) closeSheet() })
+function openSheet(html){
+  card.innerHTML = '<div class="grab"></div>' + html
+  sheet.hidden = false
+}
+
+async function openSessions(){
+  openSheet('<h3>会话</h3><div class="note">读取中…</div>')
+  var d
+  try { d = await (await fetch('/taskwatch/chat/sessions', { cache:'no-store' })).json() }
+  catch (e) { openSheet('<h3>会话</h3><div class="note">读取失败：' + esc(e.message) + '</div>'); return }
+  if (d && d.error) { openSheet('<h3>会话</h3><div class="note">读取失败：' + esc(d.error) + '</div>'); return }
+  S.sessions = (d && d.sessions) || []
+  var h = '<h3>会话（' + S.sessions.length + '）</h3>'
+  for (var i = 0; i < S.sessions.length; i++) {
+    var s = S.sessions[i]
+    var on = s.id === S.sessionId ? ' on' : ''
+    var title = s.title || titles[s.id] || s.fallback || shortId(s.id)
+    h += '<button class="item' + on + '" data-sess="' + esc(s.id) + '">'
+      + '<span class="g"><span class="t">' + esc(title) + '</span>'
+      + '<span class="s">' + esc((s.running ? '运行中 · ' : '') + hhmm(s.updatedAt) + (s.cwd ? ' · ' + s.cwd : '')) + '</span></span>'
+      + '<span class="r">' + (on ? '当前' : '') + '</span></button>'
+  }
+  h += '<h3>操作</h3>'
+  h += '<button class="pill" data-act="new">＋ 开一个新会话</button>'
+  h += '<button class="pill" data-act="models">切换模型</button>'
+  openSheet(h)
+  var items = card.querySelectorAll('[data-sess]')
+  for (var a = 0; a < items.length; a++) {
+    items[a].addEventListener('click', function(){
+      var id = this.getAttribute('data-sess')
+      closeSheet()
+      if (id !== S.sessionId) selectSession(id)
+    })
+  }
+  var acts = card.querySelectorAll('[data-act]')
+  for (var b = 0; b < acts.length; b++) {
+    acts[b].addEventListener('click', async function(){
+      var act = this.getAttribute('data-act')
+      if (act === 'new') {
+        closeSheet()
+        setSub('正在开新会话…')
+        try {
+          var made = await post('/taskwatch/chat/create', {})
+          if (made && made.sessionId) selectSession(made.sessionId)
+        } catch (e) { setSub('新建失败：' + e.message) }
+      } else if (act === 'models') { openModels() }
+    })
+  }
+  // 缺标题的会话：一次批量请求补齐（最多 12 个），到一条改一条。
+  var need = []
+  for (var n = 0; n < S.sessions.length && need.length < 12; n++) {
+    if (!S.sessions[n].title && !titles[S.sessions[n].id]) need.push(S.sessions[n].id)
+  }
+  if (need.length) fillTitles(need)
+}
+
+/** 批量补标题：**分小批**请求，每回来一批就就地改一次标签。
+ *
+ *  为什么分批：宿主补一个标题要 1~2 次持久化读（实测约 0.5s/次），一批 12 个
+ *  要 5 秒多。与其让用户对着 12 个 "Projects" 干等 5 秒，不如每 4 个刷一次 ——
+ *  一两秒后前几条就有名字了。宿主侧和本机都有缓存，所以只有第一次会这样。
+ */
+async function fillTitles(ids){
+  for (var i = 0; i < ids.length; i += 4) {
+    var chunk = ids.slice(i, i + 4)
+    var got
+    try {
+      var r = await fetch('/taskwatch/chat/titles?ids=' + encodeURIComponent(chunk.join(',')), { cache:'no-store' })
+      if (!r.ok) continue
+      got = await r.json()
+    } catch (e) { continue }
+    if (!got || !got.titles) continue
+    for (var id in got.titles) {
+      if (!got.titles[id]) continue
+      titles[id] = got.titles[id]
+      var el = card.querySelector('[data-sess="' + id + '"] .t')
+      if (el) el.textContent = titles[id]
+      if (id === S.sessionId) $('sessTitle').textContent = titles[id]
+    }
+    try { localStorage.setItem('taskwatch.titles', JSON.stringify(titles)) } catch (e) {}
+  }
+}
+
+async function openModels(){
+  openSheet('<h3>切换模型</h3><div class="note">读取中…</div>')
+  var d
+  try { d = await (await fetch('/taskwatch/chat/models', { cache:'no-store' })).json() }
+  catch (e) { openSheet('<h3>切换模型</h3><div class="note">读取失败：' + esc(e.message) + '</div>'); return }
+  if (d && d.error) { openSheet('<h3>切换模型</h3><div class="note">读取失败：' + esc(d.error) + '</div>'); return }
+  var h = ''
+  var gs = (d && d.groups) || []
+  for (var i = 0; i < gs.length; i++) {
+    h += '<h3>' + esc(gs[i].name) + '</h3>'
+    for (var j = 0; j < gs[i].models.length; j++) {
+      var m = gs[i].models[j]
+      h += '<button class="item" data-model="' + esc(gs[i].id + '|' + m.id) + '">'
+        + '<span class="g"><span class="t">' + esc(m.name) + '</span></span>'
+        + '<span class="r">' + esc(m.id) + '</span></button>'
+    }
+  }
+  if (!h) h = '<div class="note">没有可选模型</div>'
+  openSheet(h)
+  var ms = card.querySelectorAll('[data-model]')
+  for (var k = 0; k < ms.length; k++) {
+    ms[k].addEventListener('click', async function(){
+      var pair = this.getAttribute('data-model').split('|')
+      closeSheet()
+      setSub('切换模型中…')
+      try {
+        await post('/taskwatch/chat/model', { sessionId:S.sessionId, provider:pair[0], model:pair[1] })
+        setSub('模型已切换：' + pair[1])
+      } catch (e) { setSub('切换失败：' + e.message) }
+    })
+  }
+}
+
+function kv(k, v){
+  return '<div class="kv"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>'
+}
+async function openStatus(){
+  openSheet('<h3>任务详情</h3><div class="note">读取中…</div>')
+  var d = lastData
+  if (!d || d.error) {
+    try { d = await (await fetch('/taskwatch/data', { cache:'no-cache' })).json() } catch (e) { d = null }
+  }
+  if (!d) { openSheet('<h3>任务详情</h3><div class="note">读取失败</div>'); return }
+  if (d.error) { openSheet('<h3>任务详情</h3><div class="note">读取失败：' + esc(d.error) + '</div>'); return }
+  var t = d.totals || {}
+  var h = '<h3>概览</h3>'
+  h += kv('会话', (t.sessions||0) + ' 个，' + (t.running||0) + ' 个在跑')
+  h += kv('后台任务', (t.jobs||0) + ' 个，' + (t.jobsRunning||0) + ' 个在跑')
+  h += kv('子代理', (t.subagents||0) + ' 个')
+  h += kv('待你处理', (t.pending||0) + ' 件')
+  var pend = d.pending || []
+  if (pend.length) {
+    h += '<h3>在等你</h3>'
+    for (var i = 0; i < pend.length; i++) {
+      h += kv(pend[i].kind === 'approval' ? '需要批准' : '需要回答',
+              (pend[i].sessionTitle || shortId(pend[i].sessionId)) + '：' + (pend[i].summary || ''))
+    }
+  }
+  var jobs = d.jobs || []
+  var running = []
+  for (var j = 0; j < jobs.length; j++) {
+    if (jobs[j].status === 'running' || jobs[j].status === 'stopping') running.push(jobs[j])
+  }
+  if (running.length) {
+    h += '<h3>正在跑的后台任务</h3>'
+    for (var k = 0; k < running.length; k++) h += kv(running[k].id, running[k].label || running[k].name || '')
+  }
+  openSheet(h)
+}
+
+// ---------------------------------------------------------------------------
+// 会话切换
+// ---------------------------------------------------------------------------
+function selectSession(id){
+  S.sessionId = id
+  try { localStorage.setItem('taskwatch.session', id) } catch (e) {}
+  var label = shortId(id)
+  for (var i = 0; i < S.sessions.length; i++) {
+    if (S.sessions[i].id === id) { label = S.sessions[i].title || titles[id] || S.sessions[i].fallback || label; break }
+  }
+  $('sessTitle').textContent = label
+  S.items = []; S.seq = 0; S.running = false; S.streaming = null; S.pending = null
+  renderAll()
+  syncSend()
+  openStream()
+}
+
+async function ensureSession(){
+  var r
+  try {
+    var res = await fetch('/taskwatch/chat/sessions', { cache:'no-store' })
+    if (res.status === 404) { S.chatReady = false; setSub('对话功能不可用（宿主未注册接口）'); renderAll(); return }
+    r = await res.json()
+  } catch (e) {
+    S.chatReady = false; setSub('对话功能不可用：' + e.message); renderAll(); return
+  }
+  if (r && r.error) { S.chatReady = false; setSub('对话功能不可用：' + r.error); renderAll(); return }
+  S.sessions = (r && r.sessions) || []
+  var saved = ''
+  try { saved = localStorage.getItem('taskwatch.session') || '' } catch (e) {}
+  var pick = ''
+  for (var i = 0; i < S.sessions.length; i++) { if (S.sessions[i].id === saved) { pick = saved; break } }
+  if (!pick && S.sessions.length) pick = S.sessions[0].id
+  if (pick) selectSession(pick)
+  else setSub('还没有会话，点右上角开一个')
+}
+
+// ---------------------------------------------------------------------------
+// 状态轮询（复用只读的 /taskwatch/data）
+// ---------------------------------------------------------------------------
+var lastData = null, TIMER = null
+async function tick(){
+  try {
+    var r = await fetch('/taskwatch/data', { cache:'no-cache' })
+    if (!r.ok) throw new Error('HTTP ' + r.status)
+    lastData = await r.json()
+  } catch (e) { lastData = { error: e.message } }
+  syncStatus()
+}
+function startPolling(){ if (!TIMER) TIMER = setInterval(tick, 5000) }
+function stopPolling(){ if (TIMER) { clearInterval(TIMER); TIMER = null } }
+
+// ---------------------------------------------------------------------------
+// 绑定与启动
+// ---------------------------------------------------------------------------
+$('send').addEventListener('click', function(){ if (S.running) stop(); else send() })
+$('input').addEventListener('input', autoGrow)
+$('input').addEventListener('keydown', function(e){
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!S.running) send() }
+})
+$('sessBtn').addEventListener('click', openSessions)
+$('menuBtn').addEventListener('click', openSessions)
+$('status').addEventListener('click', openStatus)
+
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) { stopPolling(); return }
+  tick(); startPolling()
+  // 长时间挂起后可能错过中间事件，回前台重新取一次快照。
+  if (S.sessionId) openStream()
+})
+
+;(async function(){
+  await tick()
+  await ensureSession()
+  if (!S.sessionId) renderAll()
+  if (!document.hidden) startPolling()
+})()
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/taskwatch/sw.js', { scope:'/taskwatch' })
+    .catch(function(e){ console.warn('taskwatch: service worker 注册失败', e) })
+}
 </script>
 </body>
 </html>

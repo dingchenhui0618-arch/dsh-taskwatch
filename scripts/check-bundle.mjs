@@ -138,8 +138,33 @@ check('宿主 apply 声明了 1 个形参（ctx）', host.apply.length === 1, St
 
 const hostSrc = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
 check("宿主注册了 '/taskwatch' 路由", hostSrc.includes("'/taskwatch'"))
-check('宿主不提供任何写操作（只读承诺）',
-  !/req\.method\s*===\s*'POST'/.test(hostSrc) && !/method\s*===\s*'POST'/.test(hostSrc))
+
+// 写入口的范围。原来是 `!/method === 'POST'/` 这种"检查写法"的断言 ——
+// 2026-09-22 加了 8 条对话路由（其中 4 条是写）之后它**照样通过**，
+// 是一条假绿灯：它证明的是"没这么写"，不是"没有这个能力"。
+// 改成正面清点：所有路由里，不属于只读白名单的必须全部落在 /taskwatch/chat/ 之下。
+const READONLY_ROUTES = new Set([
+  '/taskwatch',
+  '/taskwatch/data',
+  '/taskwatch/session',
+  '/taskwatch/manifest.webmanifest',
+  '/taskwatch/sw.js',
+])
+const declaredPaths = [...hostSrc.matchAll(/path:\s*'(\/taskwatch[^']*)'/g)].map((m) => m[1])
+const chatPaths = declaredPaths.filter((p) => !READONLY_ROUTES.has(p))
+check('新增路由全部落在 /taskwatch/chat/ 之下（写能力只从这一组来）',
+  chatPaths.length > 0 && chatPaths.every((p) => p.startsWith('/taskwatch/chat/')),
+  chatPaths.join(' ') || '(没有)')
+check('对话路由共 9 条（5 读 + 4 写，增删都要是有意识的）',
+  chatPaths.length === 9, `实际 ${chatPaths.length}：${chatPaths.join(' ')}`)
+check('对话路由把 sessionController 当软依赖、并逐请求获取',
+  /ctx\.get\('sessionController'\)/.test(hostSrc) && /chatOf\(\)/.test(hostSrc))
+check('prompt 的 requestId 由宿主生成（客户端不能决定请求身份）',
+  /requestId:\s*randomUUID\(\)/.test(hostSrc))
+check('新建会话不接受客户端指定 cwd',
+  !/request\.cwd\s*=/.test(hostSrc))
+check("SSE 关掉了 nginx 缓冲（否则流式会退化成一次性）",
+  hostSrc.includes("'x-accel-buffering': 'no'"))
 
 // 轮询路径的开销与缓存协商。snapshot() 一次要问一圈服务（每个 agent 的 jobs、
 // 每个会话的 eventAt/title/goal、每个 agent 的 listDescendants），而手机页面
@@ -169,12 +194,12 @@ check('files 含 lib 与 cordis.patch.yml',
 //   2) 手机上的耗电 —— 页面常驻后台标签页时不该继续每 3 秒发请求。
 const page = readFileSync(join(ROOT, 'lib', 'page.html'), 'utf8')
 
-const escMap = /ES=\{([^}]*)\}/.exec(page)
+const escMap = /ESC\s*=\s*\{([^}]*)\}/.exec(page)
 const escaped = escMap ? escMap[1] : ''
 check("page.html 的转义表覆盖 & < > \" '",
   escaped.includes("'&'") && escaped.includes("'<'") && escaped.includes("'>'")
     && escaped.includes('&quot;') && escaped.includes('&#39;'),
-  escMap ? escMap[1] : '(找不到 ES 表)')
+  escMap ? escMap[1] : '(找不到 ESC 表)')
 
 // 页面里的内联脚本必须能编译。
 //
@@ -187,22 +212,82 @@ if (!pageScript) pageSyntaxError = '找不到内联 <script> 块'
 else { try { new Function(pageScript[1]) } catch (e) { pageSyntaxError = e.message } }
 check('page.html 的内联脚本可编译', pageSyntaxError === null, pageSyntaxError || '')
 
-const innerHtmlWrites = (page.match(/innerHTML\s*=/g) || []).length
-check('page.html 只在渲染入口写一次 innerHTML',
-  innerHtmlWrites === 1, `实际 ${innerHtmlWrites} 处`)
+// XSS 的四条主路径必须走 textContent 或 esc()。
+//
+// 说明白这条断言的能力边界：它是**代理**，不是证明 —— 它盯住的是已知的四个
+// 入口（模型正文、工具提示、工具名、会话标题），不是"全页面无 XSS"。
+// 之所以仍然值得写：这四处正是唯一会渲染外部文本的地方，改动时踩中的概率最高。
+check('page.html 的气泡用 textContent 写入（模型正文不进 innerHTML）',
+  /\.textContent\s*=\s*text/.test(page))
+check('page.html 的工具提示用 textContent 写入',
+  /a\.textContent\s*=\s*it\.hint/.test(page))
+check('page.html 的工具名经 toolLabel 后用 textContent 写入',
+  /nm\.textContent\s*=\s*toolLabel\(/.test(page))
+
+// 2026-09-22 实测踩到的坑：tool/result 的顶层**没有** callId，
+// 真正的 id 在 data.message.source.callId。按顶层读会一直拿到 undefined，
+// 表现是每来一个工具结果就新插一张错卡。这条断言把它钉住。
+check('page.html 从 data.message.source.callId 取工具结果 id',
+  /message\.source\.callId/.test(page) && /resultCallId\(d\)/.test(page))
+
+// 会话标题靠 session/title 帧补全（冷会话也有），否则顶部只会显示目录名。
+check('page.html 处理 session/title 帧',
+  /'session\/title'/.test(page) && /setTitle\(/.test(page))
+
+// 就地更新要按序号定位，别靠"最后一张卡"猜。
+check('page.html 按 data-i 序号就地替换节点',
+  /data-i/.test(page) && /querySelector\('\[data-i="/.test(page))
+
+// service worker 的离线兜底用的是 offline:true + errors[]（形状在 lib/sw.js 里）。
+// 不认它，断网时会显示成"一切正常，没有任务在跑" —— 对监控来说，
+// 把"读不到"说成"没事"是最坏的一种错。
+check('page.html 认 service worker 的离线快照形状',
+  /d\.offline/.test(page) && /d\.errors/.test(page))
+
+// 对话接口绝不能被 service worker 经手：/taskwatch/chat/stream 是长连接 SSE，
+// 一旦被包一层就退化成"等整段读完再给"，流式全丢。
+const sw = readFileSync(join(ROOT, 'lib', 'sw.js'), 'utf8')
+check('sw.js 显式放过对话接口',
+  /indexOf\('\/taskwatch\/chat\/'\)/.test(sw))
+
+// 外壳必须网络优先。cache-first + 手工升 CACHE 版本号已经害过两次：
+// 改了 page.html 忘了升号，已安装的手机一直吃旧页面，而服务端看不出任何异常。
+check('sw.js 的外壳走网络优先（改了页面手机才会更新）',
+  /fetch\(e\.request\)/.test(sw) && /\.catch\(\(\)\s*=>\s*caches\.match\(e\.request\)/.test(sw))
+check('page.html 把会话标题经 esc() 再拼进 HTML',
+  /esc\(title\)/.test(page))
+const escUses = (page.match(/esc\(/g) || []).length
+check('page.html 的 esc() 用在足够多的入口上（≥ 12 处）',
+  escUses >= 12, `实际 ${escUses} 处`)
 
 check('page.html 在页面隐藏时停止轮询',
   page.includes('visibilitychange') && page.includes('document.hidden'))
 
 // 与宿主的 304 是配套的：用 no-store 的话浏览器根本不保存响应，
 // 也就永远不会带 If-None-Match 回来，宿主那边的 304 就成了死代码。
-check("page.html 用 cache:'no-cache' 取数（304 才可能生效）",
-  page.includes("{cache:'no-cache'}"))
+check("page.html 用 cache:'no-cache' 取状态（304 才可能生效）",
+  /cache:\s*'no-cache'/.test(page))
 
-// 签名必须对 generatedAt 免疫，否则「数据没变就不碰 DOM」是空话。
-// 宿主算 ETag 时做了同一件事，两处必须一致。
-check('page.html 的签名排除 generatedAt',
-  /k==='generatedAt'\?0/.test(page))
+// 对话页与宿主路由必须对齐：页面调的每个接口都要真的注册过。
+// 这条能抓住"改了路由名忘了改页面"这种单侧改动 —— 它在浏览器里只会表现为
+// 一个静默失败的按钮，很难查。
+const pageChatPaths = [...new Set([...page.matchAll(/\/taskwatch\/chat\/([a-z]+)/g)]
+  .map((m) => '/taskwatch/chat/' + m[1]))]
+const hostChatPathSet = new Set(chatPaths)
+const missingChat = pageChatPaths.filter((p) => !hostChatPathSet.has(p))
+check('页面调用的每个对话接口都在宿主注册过',
+  pageChatPaths.length >= 6 && missingChat.length === 0,
+  missingChat.length ? '缺: ' + missingChat.join(' ') : pageChatPaths.join(' '))
+
+// 流式靠 SSE；切会话后旧连接必须被丢弃，否则两条流会把内容串在一起。
+check('page.html 用 EventSource 跟随会话',
+  /new EventSource\(/.test(page))
+check('page.html 用序号丢弃切会话后的旧流',
+  /mine\s*!==\s*SEQ/.test(page))
+
+// 逐字输出只改一个节点：整页重建会让长会话每来一个字都重排。
+check('page.html 的逐字输出只改单个节点',
+  /streaming\.bub\.textContent\s*=/.test(page))
 // 真测行为，而不是查字符串在不在。
 //
 // 之前这条是 `hostSrc.includes('"generatedAt":0')` 之类 —— 那种断言在 ETag 明明

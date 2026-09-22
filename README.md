@@ -22,11 +22,15 @@ DeepSeek Harness 的只读任务监控：一个适配手机的只读状态页，
 DSH 的 Web GUI 没有内置鉴权，而默认 preset 往往是 `danger-full-access`。把整个 GUI
 暴露到公网，等于把一台能执行任意命令的机器的入口挂出去。
 
-但「看一眼任务跑到哪了」其实只需要**读**。所以这个插件把状态另外渲染成一份只读页面：
-你可以在任何隧道或反向代理上**只放行这一条路径**，而不必把 GUI 本身暴露出去。
+这个插件的做法是**不暴露 GUI，另开一组窄接口**：
+
+- **读**：把状态渲染成一份手机看得懂的页面，只放行这一条路径就够。
+- **写**：`/taskwatch/chat/*` 把 DSH **自己的**会话运行时接到手机上 —— 直接对话、
+  逐字收回复、随时停止、切换会话与模型。写入口**只有 4 条**，全部列在下面。
 
 采集面完全通过 `ctx.get(...)` 软读取服务，任何一个服务不存在都只会让对应的那一块
-留空，不会让插件挂载失败。
+留空，不会让插件挂载失败。对话那一组同理：拿不到 `sessionController` 时只让这一个
+功能返回明确错误，不影响只读页面。
 
 ## 采集面
 
@@ -43,17 +47,63 @@ DSH 的 Web GUI 没有内置鉴权，而默认 preset 往往是 `danger-full-acc
 
 ## HTTP 路由
 
+读（`GET`）：
+
 | 路径 | 类型 | 说明 |
 |---|---|---|
-| `/taskwatch` | HTML | 只读移动页，3 秒轮询（页面隐藏时暂停）；会话卡片可点开 |
+| `/taskwatch` | HTML | 手机页：以对话为主，顶部状态条点开是任务详情 |
 | `/taskwatch/data` | JSON | 全部状态的快照，带 `ETag`，未变化回 `304` |
 | `/taskwatch/session?id=&limit=` | JSON | 单个会话的最近对话（`limit` 上限 60，默认 20） |
+| `/taskwatch/chat/sessions` | JSON | 可对话的会话列表（**不含子代理会话**） |
+| `/taskwatch/chat/models` | JSON | 可选模型目录 |
+| `/taskwatch/chat/titles?ids=` | JSON | 批量补会话标题（最多 20 个，宿主缓存 10 分钟） |
+| `/taskwatch/chat/page?...` | JSON | 往更早翻会话历史 |
+| `/taskwatch/chat/stream?sessionId=` | SSE | 跟随一个会话：开场快照 + 增量事件 + 逐字输出 |
 | `/taskwatch/manifest.webmanifest` | JSON | PWA manifest |
 | `/taskwatch/sw.js` | JS | service worker |
-| `/taskwatch/icon-192.png` | PNG | 图标 |
-| `/taskwatch/icon-512.png` | PNG | 图标（兼作 maskable） |
+| `/taskwatch/icon-192.png` · `/taskwatch/icon-512.png` | PNG | 图标 |
 
-全部注册在 `ctx.webServer` 上，**没有**写操作、不接收请求体、不代理 DSH 自身的 `/api`。
+写（`POST`）—— **只有这 4 条**：
+
+| 路径 | 请求体 | 说明 |
+|---|---|---|
+| `/taskwatch/chat/send` | `{sessionId,text,mode?,timeZone?}` | 给会话发一条消息 |
+| `/taskwatch/chat/cancel` | `{sessionId}` | 停止当前这一轮 |
+| `/taskwatch/chat/create` | `{}` | 新建会话（**不接受客户端指定工作目录**） |
+| `/taskwatch/chat/model` | `{sessionId,provider,model}` | 切换该会话使用的模型 |
+
+全部注册在 `ctx.webServer` 上，不代理 DSH 自身的 `/api`，也不转发任意路径。
+写入口就只有上面 4 条 —— 契约测试会**正面清点**路由表，增删都会让构建失败
+（早先那条断言写的是"源码里不出现 `method === 'POST'`"。加了 4 个写路由之后它
+照样通过，是条假绿灯：它证明的是"没这么写"，不是"没有这个能力"）。
+
+### 对话路由为什么这么薄
+
+手机端要的「像 ChatGPT 一样对话」，DSH 内部**本来就有** —— `sessionController`
+提供 `prompt` / `follow` / `cancel` / `list` / `create` / `page` / `modelCatalog` /
+`selectModel`。所以这个插件一行 LLM 调用、一行流式解析都没写，只是把这几个方法
+转成 HTTP。三个实测出来的坑记在这里：
+
+- `follow()` 返回的本来就是**为传输设计的 wire 帧**（`SessionWireEvent.data` 是
+  `JsonValue`），可以安全地逐帧 `JSON.stringify`；不要去碰会话活对象。
+- SSE 响应必须显式带 `x-accel-buffering: no`，否则 nginx 会把流式缓冲成一次性吐出。
+- `tool/result` 帧的 `callId` **不在顶层**，在 `data.message.source.callId`。
+  按顶层读会一直拿到 `undefined`，表现是每来一个工具结果就多插一张错卡。
+- 会话标题只能从事件日志的 `session/title` 帧里取 —— `SessionSummary` 里**没有**
+  title 字段。分页语义也是实测的：`throughSeq` 超过会话 cursor 会报
+  `past cursor N`，而 N 正是需要的值，于是用错误信息一步重试。
+
+### 手机页为什么这样排
+
+要解决的是「小白点进来也看得懂」。所以页面**不做仪表盘**：顶部一行说人话的状态
+（点开才是原来那张数据表），中间是对话，底部是输入框，数据表格收进抽屉。
+
+两个具体决定：
+
+- **工具调用翻译成人话**。`pwsh` → 「运行命令」、`grep` → 「搜索内容」、`subagent` →
+  「派发子任务」。用户不需要知道 `pwsh` 是什么；卡片上还给一行命令/路径摘要，状态用
+  进行中 / 完成 / 失败三态。这是"看得懂进度"最关键的一处。
+- **逐字输出只改一个节点**。整页重建会让长会话每来一个字都重排一次。
 
 ### 页面为什么不做整页重建
 
@@ -181,11 +231,18 @@ PWA 外壳由中继本地提供（而不是转发上游），这样它不随上�
 
 ## 安全边界
 
+- **写入口等于一台终端**。一旦放行 `/taskwatch/chat/send`，能打开这个页面的人就能在
+  这台机器上驱动 agent —— 而 DSH 默认 `danger-full-access`。所以中继那一层必须
+  **同时**有 TLS、HTTP basic auth 和应用层令牌，三层缺一不可；`/taskwatch/chat/*`
+  能不转发就不转发。手机页默认只在**已有**会话上操作，新建会话也不接受指定工作目录。
+- 手机上做的每一步都会落进该会话的日志，桌面上打开同一个会话就能看到全部经过 ——
+  这是"远程操作可追溯"的那一半。
 - 插件的路由只在**回环**上监听，从不对外。
 - 页面带 `X-Robots-Tag: noindex, nofollow`，响应带 `nosniff`。除 `/taskwatch/data`
   （见下）外一律 `no-store`。
 - service worker 的作用域**限定为 `/taskwatch`**（注册时即指定，脚本也放在
-  `/taskwatch/sw.js`），不允许它有机会拦截主 GUI 的请求。
+  `/taskwatch/sw.js`），不允许它有机会拦截主 GUI 的请求；`/taskwatch/chat/*`
+  在 `fetch` 里被显式放过，尤其不能让 SSE 被它包一层。
 - 状态数据**不会被离线复用**：外壳可以离线打开，但 `/taskwatch/data` 与
   `/taskwatch/session` 每次都必须回源。断网时返回一份显式的 `offline: true` 空快照并在
   页面上明说 —— 对监控来说，看到过期状态比看到断连更危险。
@@ -204,18 +261,30 @@ PWA 外壳由中继本地提供（而不是转发上游），这样它不随上�
   「还有 N 条未显示」），避免长会话把页面拖慢。工作流列表目前没有上限——宿主只收
   运行中的工作流，通常很小，但契约上没有上界。
 - 单条消息文本超过 4000 字符会被截断。
+- **手机页只能对话，不能审批**。状态条会告诉你「有 N 件事在等你」，但批准/回答仍然
+  只能在桌面上做 —— 也可以直接在对话里让 agent 继续，那才是它的等价物。
+- **子代理会话不出现在手机列表里**。它们是宿主内部的干活会话（`origin: subagent`），
+  没有父地址连日志都读不了（分页会报 `subagent Sessions require their durable parent
+  address`），混进列表只会让"该点哪个"更难。
+- 冷会话标题要现读一次事件日志（每个会话 1~2 次持久化读，实测约 0.5 秒/次）。宿主侧
+  缓存 10 分钟、手机侧缓存在 `localStorage`，所以只有第一次打开会话列表会花一两秒，
+  而且是每 4 个一批刷出来、不是干等到最后。
+- 会话列表只补**最上面 12 条**的标题；再往下的仍显示目录名，滚动不会触发补取
+  （下次打开才会）。
 - 手机页把会话 id 显示成前 10 位加省略号，但那**只是排版**：完整 id 仍在 `data-sid`
   属性里，因为点击展开要用它。不要把短显示当成脱敏。
 - 页面**还没有设 CSP**。它与 DSH Web GUI **同源**，而后者没有鉴权且默认
   `danger-full-access`，所以任何一次漏转义都等于一台能执行任意命令的机器的入口。
-  目前的转义是完整的、也有契约测试钉着（见「开发」一节），但加一层
-  `Content-Security-Policy`（脚本用 sha256 hash 而非 `unsafe-inline`）会是更结实的
-  纵深防御。这是本项目最值得做的下一步加固。
+  目前模型正文、工具提示、工具名、会话标题这四处要么走 `textContent`、要么经
+  `esc()`，也有契约测试钉着 —— 但要说清那条测试的能力边界：它是**代理**，
+  盯的是已知的四个入口，不等于"全页面无 XSS"。加一层 `Content-Security-Policy`
+  （脚本用 sha256 hash 而非 `unsafe-inline`）会是更结实的纵深防御。这是本项目
+  最值得做的下一步加固。
 
 ## 开发
 
 ```sh
-node scripts/check-bundle.mjs   # 客户端 bundle + 宿主契约 + 页面的测试（36 项）
+node scripts/check-bundle.mjs   # 客户端 bundle + 宿主契约 + 页面的测试（54 项）
 node scripts/make-icons.mjs     # 重新生成图标（自实现 PNG 编码，零依赖）
 node scripts/make-demo.mjs      # 生成 docs/demo.html（假数据，供截图与预览）
 ```
