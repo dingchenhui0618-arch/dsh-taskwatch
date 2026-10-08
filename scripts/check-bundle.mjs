@@ -254,6 +254,17 @@ check('sw.js 显式放过对话接口',
 // 改了 page.html 忘了升号，已安装的手机一直吃旧页面，而服务端看不出任何异常。
 check('sw.js 的外壳走网络优先（改了页面手机才会更新）',
   /fetch\(e\.request\)/.test(sw) && /\.catch\(\(\)\s*=>\s*caches\.match\(e\.request\)/.test(sw))
+
+// 这两条防的是 2026-10-08 那次"手机一直停在只读旧页、而服务端两份文件字节一致"：
+//   - install 用原子的 addAll，任何一个 URL 当次取不到就整体回滚，旧 SW 永远掌权；
+//   - 新 SW 接管后不主动重载，已经打开的那个页面本身不会变，用户看到的仍是旧页。
+check('sw.js 的 install 用 allSettled 而非原子 addAll',
+  // 先剥掉整行注释再判：sw.js 的说明文字里正好提到了 c.addAll(SHELL) 这串字，
+  // 不剥的话这条会对着注释报失败。
+  /Promise\.allSettled\(SHELL\.map/.test(sw.replace(/^\s*\/\/.*$/gm, '')) &&
+  !/\.addAll\(/.test(sw.replace(/^\s*\/\/.*$/gm, '')))
+check('sw.js 在 activate 时主动重载已打开的页面',
+  /clients\.matchAll\(\{\s*type:\s*'window'\s*\}\)/.test(sw) && /\.navigate\(/.test(sw))
 check('page.html 把会话标题经 esc() 再拼进 HTML',
   /esc\(title\)/.test(page))
 const escUses = (page.match(/esc\(/g) || []).length
