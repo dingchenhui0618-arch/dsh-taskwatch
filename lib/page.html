@@ -1334,6 +1334,29 @@ document.addEventListener('visibilitychange', function(){
   if (S.sessionId) openStream()
 })
 
+// ── 统一兜住"登录没了" ────────────────────────────────────────────────────
+// 任何一个请求回 401，就送去配对页。装在 fetch 上而不是散在每个调用点：
+// 漏掉一处就会出现「页面永远卡在连接中」，而那种状态在手机上**没有任何自救路径**
+// —— 用户既不知道该去哪，也没法清 cookie。这里一次装好，全部覆盖。
+//
+// 但跳之前必须确认配对页真的存在：中继可能是还没重启的旧版本，那时
+// /taskwatch/pair 会 404 —— 跳过去等于把「卡在连接中」换成「一片 not found」，
+// 反而更糟。新中继对该路径免鉴权回 200，旧中继回 404，所以启动探一次就够。
+var pairPageOk = false
+var rawFetch = window.fetch.bind(window)
+rawFetch('/taskwatch/pair', { method: 'HEAD' })
+  .then(function (r) { pairPageOk = (r.status === 200) })
+  .catch(function () { /* 探测失败就当没有，保守降级 */ })
+window.fetch = function (u, o) {
+  return rawFetch(u, o).then(function (r) {
+    if (r.status === 401) {
+      if (pairPageOk) location.replace('/taskwatch/pair')
+      throw new Error('unauthorized')
+    }
+    return r
+  })
+}
+
 ;(async function(){
   await tick()
   await ensureSession()
