@@ -351,6 +351,19 @@ check('page.html 分组按状态决定默认展开（失败绝不能被折叠藏
 check('page.html 分组增量更新会清掉已单独渲染的旧行（同一批步骤不显示两遍）',
   /data-g=/.test(page) && /stray\.remove\(\)/.test(page) &&
   /function groupRow/.test(page))
+check('page.html markdown 支持标题/粗体/行内代码/列表',
+  /\.md-h/.test(page) && /createElement\('strong'\)/.test(page) &&
+  /createElement\('code'\)/.test(page) && /\.md-li/.test(page))
+check('page.html XSS 底线：markdown 渲染段内不含任何 innerHTML',
+  (function () {
+    const a = page.indexOf('function inlineInto')
+    const b = page.indexOf('function toolNode')
+    if (a < 0 || b <= a) return false
+    const seg = page.slice(a, b)
+    return seg.indexOf('innerHTML') === -1 && seg.indexOf('textContent') !== -1
+  })())
+check('page.html markdown 渲染件被 bubNode 真正调用（不是写了没用）',
+  /blocksInto\(b, plain\)/.test(page) && /blocksInto\(b, s\)/.test(page))
 
 // ── 设计技能清单里的硬性要求（ui-ux-pro-max / impeccable / hallmark） ──────
 check('page.html 触碰区不小于 44px（检索库标为 Critical）',

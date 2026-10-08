@@ -400,6 +400,25 @@ html,body{overflow-x:clip}
 .toolgroup .gb{padding:0 8px 8px}
 .toolgroup .gb .tool{margin-top:6px}
 .toolgroup .gb[hidden]{display:none}
+
+/* 8. 轻量 markdown：标题 / 粗体 / 行内代码 / 列表 / 空行留白。
+      做这个是因为模型输出里 ## 和 ** 到处都是 —— 不渲染的话，手机上看到的
+      就是一堆符号，对"点进来想看懂发生了什么"的人是纯粹的噪音。
+      只认这几种，理由见 JS 里 blocksInto 的注释。 */
+.md-h{font-weight:600;font-size:15px;line-height:1.45;margin:3px 0 2px}
+.md-h[data-lv='1']{font-size:16.5px}
+.md-h[data-lv='2']{font-size:15.5px}
+.md-li{position:relative;padding-left:14px;margin:1px 0;line-height:1.6}
+.md-li::before{content:'';position:absolute;left:3px;top:.68em;width:4px;height:4px;
+  border-radius:50%;background:currentColor;opacity:.5}
+.md-p{margin:0;line-height:1.6}
+.md-blank{height:8px}
+.bub strong{font-weight:600}
+.bub code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.88em;padding:1px 4px;border-radius:4px;
+  background:var(--panel2);border:1px solid var(--line);overflow-wrap:anywhere}
+.bub .md-p:first-child,.bub .md-h:first-child{margin-top:0}
+.bub .md-p:last-child,.bub .md-h:last-child{margin-bottom:0}
 </style>
 </head>
 <body>
@@ -742,6 +761,63 @@ var FOLD_CHARS = 620
  *  两种渲染：
  *   - 不含 ``` 围栏：整段一个文本节点。流式期间只改 textContent，代价最低。
  *   - 含围栏：拆成「文字 · 代码块 · 文字」，代码块自己会滚，不用把页面顶宽。 */
+/** 行内标记：`代码` 与 **粗体**。
+ *
+ *  安全要点：模型文本**永远不进 innerHTML**，全部走 createTextNode / textContent。
+ *  这里用一次 exec 扫描，而不是多次 split —— 多次 split 会互相破坏：先按 ** 切开、
+ *  再按 ` 切，粗体里的反引号就会把标记配错，页面上冒出半截星号。
+ */
+function inlineInto(el, text){
+  var re = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g
+  var last = 0, m
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)))
+    var tok = m[0]
+    if (tok.charAt(0) === '`') {
+      var c = document.createElement('code')
+      c.textContent = tok.slice(1, -1)
+      el.appendChild(c)
+    } else {
+      var st = document.createElement('strong')
+      st.textContent = tok.slice(2, -2)
+      el.appendChild(st)
+    }
+    last = m.index + tok.length
+  }
+  if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)))
+  return el
+}
+
+/** 块级标记：`## 标题`、`- 列表项`、空行留白。
+ *
+ *  只认这几种。每多认一种就多一处可能显示错的地方，而这几种覆盖了模型输出的绝大
+ *  多数；真正的重活（代码块）由 bubNode 按 ``` 分流处理，不走这里。
+ */
+function blocksInto(el, text){
+  var lines = String(text).split('\n')
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i]
+    if (!ln.trim()) {
+      var gap = document.createElement('div'); gap.className = 'md-blank'
+      el.appendChild(gap); continue
+    }
+    var h = /^(#{1,4})\s+(.+)$/.exec(ln)
+    if (h) {
+      var hd = document.createElement('div'); hd.className = 'md-h'
+      hd.setAttribute('data-lv', String(h[1].length))
+      el.appendChild(inlineInto(hd, h[2])); continue
+    }
+    var li = /^\s*[-*]\s+(.+)$/.exec(ln)
+    if (li) {
+      var it = document.createElement('div'); it.className = 'md-li'
+      el.appendChild(inlineInto(it, li[1])); continue
+    }
+    var p = document.createElement('div'); p.className = 'md-p'
+    el.appendChild(inlineInto(p, ln))
+  }
+  return el
+}
+
 function bubNode(text){
   var wrap = document.createElement('div'); wrap.className = 'bubwrap'
   var b = document.createElement('div')
@@ -751,7 +827,8 @@ function bubNode(text){
   if (parts.length > 1) {
     for (var i = 0; i < parts.length; i++) {
       if (i % 2 === 0) {
-        if (parts[i]) b.appendChild(document.createTextNode(parts[i]))
+        var plain = parts[i].replace(/^\n+|\n+$/g, '')
+        if (plain.trim()) blocksInto(b, plain)
       } else {
         var seg = parts[i]
         var nl = seg.indexOf('\n')
@@ -761,7 +838,7 @@ function bubNode(text){
       }
     }
   } else {
-    b.textContent = s
+    blocksInto(b, s)
   }
   wrap.appendChild(b)
   if (s.length > FOLD_CHARS) {
