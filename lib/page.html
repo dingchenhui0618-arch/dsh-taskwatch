@@ -3,12 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="color-scheme" content="dark light">
+<meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex,nofollow">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f5f6f7" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#151517" media="(prefers-color-scheme:dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="任务监控">
-<title>DSH 任务监控</title>
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="DSH 助手">
+<title>DSH 助手</title>
+<!-- 主题引导：必须在 <style> 之前跑，否则会先闪一下亮色。
+     默认跟随系统，用户在顶栏手动切过之后以手动为准（存 localStorage）。 -->
+<script>
+(function () {
+  var t = ''
+  try { t = localStorage.getItem('taskwatch.theme') || '' } catch (e) {}
+  if (t !== 'light' && t !== 'dark') {
+    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches) ? 'dark' : 'light'
+  }
+  document.documentElement.setAttribute('data-theme', t)
+})()
+</script>
 <link rel="manifest" href="/taskwatch/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="/taskwatch/icon-192.png">
 <link rel="apple-touch-icon" href="/taskwatch/icon-192.png">
@@ -25,31 +39,131 @@
      2. 流式增量只追加到**那一个**气泡节点，不整页重建。
      3. 工具名先翻译成人话再显示。
 --------------------------------------------------------------------------- */
+/* ══ 设计令牌 ══════════════════════════════════════════════════════════════
+   真值全部取自 DSH 客户端安装包（app.asar 里的 --dsw-static-* / --dsw-alias-*），
+   变量名与客户端保持一致。这不是"照着感觉调得像"，而是同一套令牌 ——
+   客户端以后换主题，改这一个块就行。
+
+   两条规矩（改这个文件时请保持）：
+     1. hex / rgba **只准出现在这个块里**；块外一律用 var()，不许逐屏硬编码颜色。
+     2. 亮色是默认值，暗色覆盖在 :root[data-theme='dark'] 里，只有一份。
+
+   抄自客户端的原值：
+     蓝调中性 00 #fff · 50 #f9fafb · 60 #f5f6f7 · 75 #f1f3f5 · 100 #ebeef2
+              150 #e9ecf2 · 200 #e1e5ee · 300 #cfd3d6 · 400 #adb2b8 · 500 #979da6
+              600 #81858c · 700 #61666b · 750 #43454a · 800 #353638 · 850 #2c2c2e
+              875 #232324 · 900 #1b1b1c · 950 #151517 · 1000 #0f1115
+     品牌蓝 #4176e6（--dsw-alias-brand-primary-new-color）
+     状态 绿 #22c55e · 琥珀 #f59e0b · 红 #ec1313（暗色用红 400 #f25a5a）
+   ════════════════════════════════════════════════════════════════════════ */
 :root{
-  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#282d38;
-  --fg:#e8ebf0; --dim:#98a1b3; --faint:#6b7488;
-  --accent:#4c8dff; --accent-fg:#fff;
-  --ok:#3ecf8e; --warn:#ffb454; --bad:#ff6b6b;
-  --bubble-user:#2b5fd9; --bubble-ai:#1e222b;
+  /* ── 客户端静态色阶（原值照抄，一个都没改） ── */
+  --nb-00:#fff;      --nb-50:#f9fafb;   --nb-60:#f5f6f7;   --nb-75:#f1f3f5;
+  --nb-100:#ebeef2;  --nb-150:#e9ecf2;  --nb-200:#e1e5ee;  --nb-300:#cfd3d6;
+  --nb-400:#adb2b8;  --nb-500:#979da6;  --nb-600:#81858c;  --nb-700:#61666b;
+  --nb-750:#43454a;  --nb-800:#353638;  --nb-850:#2c2c2e;  --nb-875:#232324;
+  --nb-900:#1b1b1c;  --nb-950:#151517;  --nb-1000:#0f1115;
+  --blue-450:#4d93f8; --blue-600:#2563eb;
+  --green-500:#22c55e; --amber-500:#f59e0b; --red-600:#ec1313; --red-400:#f25a5a;
+
+  /* ── 客户端圆角与字体（原值） ── */
+  --dsw-radius-xs:4px; --dsw-radius-sm:8px; --dsw-radius-md:12px;
+  --dsw-radius-lg:16px; --dsw-radius-xl:20px;
+  --dsw-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --dsw-font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  /* ── 语义令牌 · 亮色（默认） ── */
+  --dsw-alias-bg-base:var(--nb-00);
+  --dsw-alias-bg-layer-1:var(--nb-00);
+  --dsw-alias-bg-layer-2:var(--nb-00);
+  --dsw-alias-bg-overlay:var(--nb-150);
+  --dsw-alias-label-primary:var(--nb-1000);
+  --dsw-alias-label-secondary:var(--nb-700);
+  --dsw-alias-label-tertiary:var(--nb-600);
+  --dsw-alias-border-l1:#0000000a;
+  --dsw-alias-border-l2:#0000001a;
+  /* 别被名字骗了：客户端的 --dsw-alias-brand-primary 其实是**中性色**
+     （亮 #0f1115 / 暗 #f9fafb），不是蓝色。蓝色是 -new-color。
+     2026-10-08 全量提取 246 个令牌时逐条核对出来的，详见 lib/tokens.css。 */
+  --dsw-alias-brand-primary-new-color:#4176e6;
+  --dsw-alias-state-success-primary:var(--green-500);
+  --dsw-alias-state-warn-primary:var(--amber-500);
+  --dsw-alias-state-error-primary:var(--red-600);
+  /* 用户气泡用客户端更深的蓝 600：白字压在品牌蓝 450 上只有 3.9:1，
+     过不了正文 4.5:1 的门槛；#2563eb 是 5.2:1。品牌蓝留给强调与焦点。 */
+  --bubble-user-fill:var(--blue-600);
+
+  /* ── 页面内部短名 = 令牌别名 ── */
+  --bg:var(--dsw-alias-bg-base);
+  --panel:var(--dsw-alias-bg-layer-1);
+  --panel2:var(--dsw-alias-bg-layer-2);
+  --line:var(--dsw-alias-border-l1);
+  --line2:var(--dsw-alias-border-l2);
+  --fg:var(--dsw-alias-label-primary);
+  --dim:var(--dsw-alias-label-secondary);
+  --faint:var(--dsw-alias-label-tertiary);
+  --accent:var(--dsw-alias-brand-primary-new-color);
+  --accent-fg:#fff;
+  --ok:var(--dsw-alias-state-success-primary);
+  --warn:var(--dsw-alias-state-warn-primary);
+  --bad:var(--dsw-alias-state-error-primary);
+  --bubble-user:var(--bubble-user-fill);
+  --bubble-ai:var(--dsw-alias-bg-layer-1);
   --safe-b:env(safe-area-inset-bottom,0px);
   --safe-t:env(safe-area-inset-top,0px);
 }
-@media (prefers-color-scheme:light){
-  :root{
-    --bg:#f6f7f9; --panel:#fff; --panel2:#eef0f4; --line:#e0e3e9;
-    --fg:#12151b; --dim:#5b6472; --faint:#8b93a1;
-    --accent:#2563eb; --bubble-user:#2563eb; --bubble-ai:#fff;
-  }
+/* 暗色：只有这一份。由 <head> 里的小脚本按系统偏好设 data-theme，手动切换覆盖它。 */
+:root[data-theme='dark']{
+  --dsw-alias-bg-base:var(--nb-950);
+  --dsw-alias-bg-layer-1:var(--nb-875);
+  --dsw-alias-bg-layer-2:var(--nb-850);
+  --dsw-alias-bg-overlay:var(--nb-700);
+  --dsw-alias-label-primary:var(--nb-50);
+  --dsw-alias-label-secondary:var(--nb-300);
+  --dsw-alias-label-tertiary:var(--nb-400);
+  --dsw-alias-border-l1:#ffffff0f;
+  --dsw-alias-border-l2:#ffffff1f;
+  /* 包内暗色对品牌蓝有**真实覆盖** #5686fe（= --dsw-static-deepseek-450），
+     不是我把亮色值搬过来的 —— 全量提取时核对过。 */
+  --dsw-alias-brand-primary-new-color:#5686fe;
+  --dsw-alias-state-error-primary:var(--red-400);
+  --bubble-ai:var(--nb-850);
 }
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box}
 html,body{height:100%;margin:0}
+:root{color-scheme:light}
+:root[data-theme='dark']{color-scheme:dark}
 body{
   background:var(--bg);color:var(--fg);
-  font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  font:16px/1.6 var(--dsw-font-family);
   display:flex;flex-direction:column;overflow:hidden;
+  /* 只关掉系统那层蓝色高亮蒙版；按压反馈由各组件自己的 :active 给，
+     这样行为和桌面客户端一致，也不会在触屏上留下残留色块。 */
+  -webkit-tap-highlight-color:transparent;
 }
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 textarea{font:inherit}
+
+/* 按压反馈：80–150ms 内出现，且只改背景色 / 透明度，**不动布局尺寸** ——
+   缩放或位移动画会把周围内容带得一起抖，是移动端廉价感的主要来源之一。 */
+button{transition:background-color .12s ease-out,color .12s ease-out,opacity .12s ease-out}
+button:disabled{cursor:default}
+
+/* 键盘焦点必须看得见。用 :focus-visible 而不是 :focus，
+   触屏点按就不会留下一个难看的光圈。 */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--dsw-radius-sm)}
+:focus:not(:focus-visible){outline:none}
+
+/* 减小动效：不是可选项。前庭敏感的用户会被无限脉冲和旋转弄难受，
+   所以这里把全部动画压成瞬变。 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}
 
 /* ── 顶部 ───────────────────────────────────────────────────────────── */
 header{
@@ -64,11 +178,16 @@ header{
 .sess:active{background:var(--panel2)}
 .sess .t{font-size:14.5px;font-weight:600;max-width:56vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sess .s{font-size:11.5px;color:var(--faint)}
+/* 触碰区 ≥44×44 —— iOS/Android 的硬性下限，检索库里标为 Critical。
+   图标本身 20px，靠按钮本身撑到 44；相邻按钮之间留够间距。 */
 .iconbtn{
-  flex:0 0 auto;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;
-  color:var(--dim);font-size:17px;
+  flex:0 0 auto;width:44px;height:44px;border-radius:var(--dsw-radius-md);
+  display:grid;place-items:center;color:var(--dim);
 }
-.iconbtn:active{background:var(--panel2)}
+.iconbtn:active{background:var(--panel2);color:var(--fg)}
+.iconbtn svg{width:20px;height:20px;display:block;stroke:currentColor;fill:none;
+  stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.iconbtn[aria-pressed='true']{color:var(--accent)}
 
 /* 状态条：一句话说清现在什么情况 */
 #status{
@@ -93,12 +212,16 @@ main{
 .row{display:flex;flex-direction:column;max-width:100%}
 .row.me{align-items:flex-end}
 .row.ai{align-items:flex-start}
+/* 气泡外面包一层 .bubwrap：折叠按钮必须待在 max-height 之外，
+   否则会被 overflow:hidden 一起裁掉，点都点不到。 */
+.bubwrap{max-width:84%;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.me .bubwrap{align-items:flex-end}
 .bub{
-  max-width:84%;padding:10px 13px;border-radius:16px;white-space:pre-wrap;
-  word-break:break-word;font-size:15.5px;
+  max-width:100%;padding:10px 13px;border-radius:var(--dsw-radius-lg);white-space:pre-wrap;
+  word-break:break-word;font-size:15.5px;overflow-wrap:anywhere;
 }
-.me .bub{background:var(--bubble-user);color:#fff;border-bottom-right-radius:5px}
-.ai .bub{background:var(--bubble-ai);border:1px solid var(--line);border-bottom-left-radius:5px}
+.me .bub{background:var(--bubble-user);color:var(--accent-fg);border-bottom-right-radius:var(--dsw-radius-xs)}
+.ai .bub{background:var(--bubble-ai);border:1px solid var(--line);border-bottom-left-radius:var(--dsw-radius-xs)}
 .meta{font-size:11px;color:var(--faint);margin:3px 4px 0}
 
 /* 工具卡片：把内部工具名翻成人话，这是"看得懂进度"的关键 */
@@ -118,6 +241,11 @@ main{
 @keyframes spin{to{transform:rotate(360deg)}}
 .tool.ok .h .st{color:var(--ok)}
 .tool.no .h .st{color:var(--bad)}
+/* 状态图标：同一套描边风格、同一个尺寸令牌，filled/outline 不混用。 */
+.tool .ti{flex:0 0 auto;display:grid;place-items:center;color:var(--ok)}
+.tool.no .ti{color:var(--bad)}
+.tool .ti svg{width:16px;height:16px;display:block;stroke:currentColor;fill:none;
+  stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .tool .a{margin-top:4px;color:var(--dim);font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -147,9 +275,13 @@ footer{
 }
 #input:focus{outline:none;border-color:rgba(76,141,255,.55)}
 #send{
-  flex:0 0 auto;width:44px;height:44px;border-radius:14px;background:var(--accent);
-  color:var(--accent-fg);display:grid;place-items:center;font-size:18px;
+  flex:0 0 auto;width:44px;height:44px;border-radius:var(--dsw-radius-md);background:var(--accent);
+  color:var(--accent-fg);display:grid;place-items:center;
 }
+/* SVG 必须显式给尺寸：不给的话浏览器按 300×150 的默认替换尺寸渲染，按钮会被撑爆。 */
+#send svg{width:20px;height:20px;display:block;stroke:currentColor;fill:none;
+  stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+#send:active{opacity:.85}
 #send:disabled{opacity:.4}
 #send.stop{background:var(--bad)}
 
@@ -181,6 +313,71 @@ footer{
 .kv .v{flex:1;min-width:0;word-break:break-word}
 .pill{display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;margin:0 16px 8px;font-size:15px;width:calc(100% - 32px);text-align:left}
 .pill:active{background:var(--panel2)}
+
+/* ══ 溢出与折叠（内容放不下时的八条策略） ══════════════════════════════
+   原则：**任何长内容都不许撑破布局，但也不许无声无息地被截掉** ——
+   要么折叠后能展开，要么给一个自己会滚的容器，要么给复制按钮。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* 1. 超长回复：折叠 + 底部渐隐。折叠与否按字符数预判，不等布局算完再改，
+      否则会先闪一下全文再收起来。 */
+.bub.fold{max-height:22rem;overflow:hidden;
+  -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent);
+  mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent)}
+.bub.fold.open{max-height:none;-webkit-mask-image:none;mask-image:none}
+.foldbtn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;
+  min-height:44px;margin-top:2px;color:var(--accent);font-size:13.5px;
+  font-weight:500;border-radius:var(--dsw-radius-sm)}
+.foldbtn:active{background:var(--panel2)}
+.foldbtn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform .15s ease-out}
+.foldbtn[aria-expanded='true'] svg{transform:rotate(180deg)}
+
+/* 2. 代码块：内部自己横竖滚，绝不撑破气泡；右上角可复制。 */
+.code{margin:4px 0;border:1px solid var(--line);border-radius:var(--dsw-radius-md);
+  overflow:hidden;background:var(--panel2)}
+.codebar{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 10px;
+  border-bottom:1px solid var(--line);font-size:12px;color:var(--faint)}
+.codebar .lang{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.codebar button{display:flex;align-items:center;gap:5px;min-height:36px;padding:0 8px;
+  color:var(--dim);border-radius:var(--dsw-radius-sm);font-size:12px}
+.codebar button:active{background:var(--panel)}
+.codebar svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.code pre{margin:0;padding:10px 12px;max-height:20rem;overflow:auto;
+  font:12.5px/1.6 var(--dsw-font-mono);color:var(--fg);white-space:pre;
+  -webkit-overflow-scrolling:touch}
+
+/* 3. 工具卡里的长命令：原来是单行省略号，长命令等于看不见。
+      改成默认收 3 行、点开看全、并给复制按钮。 */
+.tool .a{white-space:pre-wrap;overflow-wrap:anywhere;max-height:4.2rem;overflow:hidden}
+.tool .a.open{max-height:none}
+.tool .a code{font:12.5px/1.6 var(--dsw-font-mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.tool .acts{display:flex;align-items:center;gap:18px;margin-top:2px}
+.tool .more{min-height:32px;color:var(--accent);font-size:12.5px;
+  display:flex;align-items:center;gap:5px}
+.tool .more:active{opacity:.7}
+
+/* 4. 流式输出中：尾部渐隐，表示"还在往下长"（客户端也是用 mask-image 做的）。 */
+.bub.streaming{-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent);
+  mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent)}
+
+/* 5. 回到底部：离开底部才出现，并显示期间来了几条新消息。 */
+#tobottom{position:fixed;right:14px;bottom:calc(78px + var(--safe-b));z-index:30;
+  display:none;align-items:center;gap:6px;min-height:44px;padding:0 14px;
+  border-radius:999px;background:var(--panel);border:1px solid var(--line2);
+  color:var(--fg);font-size:13.5px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+#tobottom.on{display:flex}
+#tobottom svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+#tobottom .n{min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  background:var(--accent);color:var(--accent-fg);font-size:11.5px;
+  display:grid;place-items:center}
+#tobottom .n[hidden]{display:none}
+
+/* 6. 全页禁止横向滚动：长 URL / 宽表格 / 长代码都不许把页面顶宽。 */
+html,body{overflow-x:clip}
+.bub,.tool,.code pre{overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -188,28 +385,46 @@ footer{
 <header>
   <div class="hrow">
     <button id="sessBtn" class="sess" aria-label="切换会话">
-      <span class="t" id="sessTitle">任务监控</span>
-      <span class="s" id="sessSub">连接中…</span>
+      <span class="t" id="sessTitle">连接中…</span>
+      <span class="s" id="sessSub">正在连接</span>
     </button>
-    <button id="menuBtn" class="iconbtn" aria-label="菜单">☰</button>
+    <button id="themeBtn" class="iconbtn" aria-label="切换深浅色" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+    </button>
+    <button id="menuBtn" class="iconbtn" aria-label="打开菜单">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
   </div>
-  <button id="status" aria-label="查看任务详情">
-    <span class="dot"></span>
+  <button id="status" aria-label="查看任务详情" aria-expanded="false">
+    <span class="dot" aria-hidden="true"></span>
     <span class="txt" id="statusTxt">正在连接…</span>
-    <span class="chev">详情 ›</span>
+    <span class="chev" aria-hidden="true">详情</span>
   </button>
 </header>
 
-<main id="log"></main>
+<main id="log" role="log" aria-live="polite" aria-label="对话记录"></main>
+
+<!-- 回到底部：离开底部时才出现，并显示期间来了几条新消息。 -->
+<button id="tobottom" type="button" aria-label="回到最新消息">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+  <span>最新</span>
+  <span class="n" hidden></span>
+</button>
 
 <footer>
   <div class="composer">
-    <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off"></textarea>
-    <button id="send" aria-label="发送">➤</button>
+    <textarea id="input" rows="1" placeholder="说点什么…" autocomplete="off"
+      aria-label="输入消息" enterkeyhint="send"></textarea>
+    <button id="send" aria-label="发送">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M12 6l6 6-6 6"/></svg>
+    </button>
   </div>
 </footer>
 
-<div id="sheet" hidden><div class="card" id="card"></div></div>
+<!-- 抽屉按对话框语义标注：读屏会当成模态处理，焦点不会跑到后面的对话里。 -->
+<div id="sheet" hidden role="dialog" aria-modal="true" aria-label="任务与会话">
+  <div class="card" id="card"></div>
+</div>
 
 <script>
 'use strict';
@@ -356,8 +571,11 @@ function acceptEvent(ev){
     if (u) { S.items.push(u); dropPending(); renderAt(S.items.length - 1) }
   } else if (t === 'assistant/message') {
     var a = normAssistant(d)
+    // 顺序很重要：先落进 S.items，再收流式气泡。反过来 finishStreaming() 会以为
+    // 服务端没给正式消息而补一条，同一段话于是建两条。
+    if (a) S.items.push(a)
     finishStreaming()
-    if (a) { S.items.push(a); renderAt(S.items.length - 1) }
+    if (a) renderAt(S.items.length - 1)
   } else if (t === 'tool/call') {
     S.items.push(toolItem(d && d.name, d && d.arguments, d && d.callId, 'run'))
     renderAt(S.items.length - 1)
@@ -405,12 +623,130 @@ var pendingTitle = ''
 
 function nearBottom(){ return log.scrollHeight - log.scrollTop - log.clientHeight < 90 }
 function toBottom(){ log.scrollTop = log.scrollHeight }
+
+// ── 回到底部 ──────────────────────────────────────────────────────────────
+// 长对话被冲到下面之后，必须有个东西能一键回到最新，并告诉用户期间来了几条。
+// 这里的 scroll 监听是 **passive + requestAnimationFrame 节流** 的：每次滚动
+// 最多做一次布尔判断，既不读也不写布局，所以不会拖慢滚动。
+var unseen = 0
+var tbTick = 0
+function tbEl(){ return document.getElementById('tobottom') }
+function syncUnseen(){
+  var b = tbEl(); if (!b) return
+  var n = b.querySelector('.n'); if (!n) return
+  if (unseen > 0) { n.hidden = false; n.textContent = unseen > 99 ? '99+' : String(unseen) }
+  else n.hidden = true
+}
+function syncToBottom(){
+  var b = tbEl(); if (!b) return
+  if (nearBottom()) { b.classList.remove('on'); unseen = 0; syncUnseen() }
+  else b.classList.add('on')
+}
+/** 有新内容落进日志时调用：没贴在底部就累计未读，并让按钮浮出来。 */
+function noteIncoming(){
+  if (!nearBottom()) { unseen++; syncUnseen() }
+  syncToBottom()
+}
+log.addEventListener('scroll', function(){
+  if (tbTick) return
+  tbTick = requestAnimationFrame(function(){ tbTick = 0; syncToBottom() })
+}, { passive:true })
+if (tbEl()) tbEl().addEventListener('click', function(){ toBottom(); unseen = 0; syncUnseen(); syncToBottom() })
 function rowNode(cls){ var r = document.createElement('div'); r.className = 'row ' + cls; return r }
+/** 复制到剪贴板。navigator.clipboard 在非 HTTPS 或旧 WebView 里可能不存在，
+ *  所以留一条 execCommand 的老路；两条都失败就明说"复制失败"，不假装成功。 */
+function copyText(s, btn){
+  function done(ok){
+    if (!btn) return
+    var old = btn.getAttribute('data-label') || btn.textContent
+    btn.setAttribute('data-label', old)
+    btn.textContent = ok ? '已复制' : '复制失败'
+    setTimeout(function(){ btn.textContent = old }, 1500)
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(s).then(function(){ done(true) }, function(){ done(false) })
+      return
+    }
+  } catch (e) {}
+  try {
+    var ta = document.createElement('textarea')
+    ta.value = s; ta.setAttribute('readonly','')
+    ta.style.position = 'fixed'; ta.style.top = '-1000px'
+    document.body.appendChild(ta); ta.select()
+    var ok = document.execCommand('copy')
+    document.body.removeChild(ta); done(ok)
+  } catch (e) { done(false) }
+}
+
+/** 代码块：``` 围栏之间的内容，放进一个自己会横竖滚的 <pre>，头上一行可复制。
+ *  内容依旧走 textContent —— "模型文本绝不进 innerHTML" 这条铁律不变。 */
+function codeNode(lang, body){
+  var box = document.createElement('div'); box.className = 'code'
+  var bar = document.createElement('div'); bar.className = 'codebar'
+  var lg = document.createElement('span'); lg.className = 'lang'
+  lg.textContent = lang || '代码'
+  var cp = document.createElement('button')
+  cp.type = 'button'; cp.setAttribute('aria-label','复制这段代码')
+  cp.textContent = '复制'
+  cp.addEventListener('click', function(){ copyText(body, cp) })
+  bar.appendChild(lg); bar.appendChild(cp)
+  var pre = document.createElement('pre'); pre.textContent = body
+  box.appendChild(bar); box.appendChild(pre)
+  return box
+}
+
+/** 折叠按钮：默认收起，点开看全文。aria-expanded 让读屏知道当前状态。 */
+function foldBtn(bub, chars){
+  var btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'foldbtn'
+  btn.setAttribute('aria-expanded','false')
+  btn.innerHTML = ICON_CHEV          // 文件内常量，非模型文本
+  btn.appendChild(document.createTextNode('展开全文（约 ' + chars + ' 字）'))
+  btn.addEventListener('click', function(){
+    var open = bub.classList.toggle('open')
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false')
+    btn.lastChild.nodeValue = open ? '收起' : ('展开全文（约 ' + chars + ' 字）')
+  })
+  return btn
+}
+
+var FOLD_CHARS = 620
+
+/** 气泡。返回的是 .bubwrap 包裹层（里面才是 .bub），这样折叠按钮不会被
+ *  max-height 一起裁掉。
+ *
+ *  两种渲染：
+ *   - 不含 ``` 围栏：整段一个文本节点。流式期间只改 textContent，代价最低。
+ *   - 含围栏：拆成「文字 · 代码块 · 文字」，代码块自己会滚，不用把页面顶宽。 */
 function bubNode(text){
+  var wrap = document.createElement('div'); wrap.className = 'bubwrap'
   var b = document.createElement('div')
   b.className = 'bub'
-  b.textContent = text            // 永远走 textContent：模型文本绝不进 innerHTML
-  return b
+  var s = String(text == null ? '' : text)
+  var parts = s.split('```')
+  if (parts.length > 1) {
+    for (var i = 0; i < parts.length; i++) {
+      if (i % 2 === 0) {
+        if (parts[i]) b.appendChild(document.createTextNode(parts[i]))
+      } else {
+        var seg = parts[i]
+        var nl = seg.indexOf('\n')
+        var lang = nl >= 0 ? seg.slice(0, nl).trim() : ''
+        var body = nl >= 0 ? seg.slice(nl + 1) : seg
+        b.appendChild(codeNode(lang, body.replace(/\n+$/, '')))
+      }
+    }
+  } else {
+    b.textContent = s
+  }
+  wrap.appendChild(b)
+  if (s.length > FOLD_CHARS) {
+    b.classList.add('fold')
+    wrap.appendChild(foldBtn(b, s.length))
+  }
+  return wrap
 }
 function toolNode(it){
   var d = document.createElement('div')
@@ -420,9 +756,10 @@ function toolNode(it){
   if (it.status === 'run') {
     var sp = document.createElement('span'); sp.className = 'sp'; head.appendChild(sp)
   } else {
+    // 状态图标同样用 SVG —— 字符 ✓ ✕ 在不同字体下粗细和垂直位置都不一样。
     var ic = document.createElement('span')
-    ic.style.flex = '0 0 auto'
-    ic.textContent = it.status === 'no' ? '✕' : '✓'
+    ic.className = 'ti'
+    ic.innerHTML = (it.status === 'no' ? ICON_FAIL : ICON_OK)  // 文件内常量，非模型文本
     head.appendChild(ic)
   }
   var nm = document.createElement('span'); nm.className = 'n'; nm.textContent = toolLabel(it.name)
@@ -432,8 +769,31 @@ function toolNode(it){
   head.appendChild(st)
   d.appendChild(head)
   if (it.hint) {
-    var a = document.createElement('div'); a.className = 'a'; a.textContent = it.hint
+    var a = document.createElement('div'); a.className = 'a'
+    var codeEl = document.createElement('code'); codeEl.textContent = it.hint
+    a.appendChild(codeEl)
     d.appendChild(a)
+    // 长命令默认只露三行 —— 给「展开」和「复制」，而不是无声无息截成省略号。
+    var acts = document.createElement('div'); acts.className = 'acts'
+    if (it.hint.length > 120 || it.hint.indexOf('\n') >= 0) {
+      var more = document.createElement('button')
+      more.type = 'button'; more.className = 'more'
+      more.setAttribute('aria-expanded','false')
+      more.textContent = '展开完整内容'
+      more.addEventListener('click', function(){
+        var open = a.classList.toggle('open')
+        more.setAttribute('aria-expanded', open ? 'true' : 'false')
+        more.textContent = open ? '收起' : '展开完整内容'
+      })
+      acts.appendChild(more)
+    }
+    var cp = document.createElement('button')
+    cp.type = 'button'; cp.className = 'more'
+    cp.setAttribute('aria-label','复制这条命令')
+    cp.textContent = '复制'
+    cp.addEventListener('click', function(){ copyText(it.hint, cp) })
+    acts.appendChild(cp)
+    d.appendChild(acts)
   }
   return d
 }
@@ -474,7 +834,7 @@ function renderAt(idx){
   var n = nodeFor(S.items[idx], idx)
   var old = log.querySelector('[data-i="' + idx + '"]')
   if (old) old.replaceWith(n)
-  else log.appendChild(n)
+  else { log.appendChild(n); noteIncoming() }
   renderPending()
   if (stick) toBottom()
 }
@@ -483,7 +843,7 @@ function renderEmpty(){
   log.innerHTML = ''
   var d = document.createElement('div')
   d.className = 'empty'
-  var h2 = document.createElement('h2'); h2.textContent = '👋 在这里跟我说话就行'
+  var h2 = document.createElement('h2'); h2.textContent = '在这里跟我说话就行'
   var p = document.createElement('p')
   p.innerHTML = '我会在这台电脑上干活，进度直接显示在这里。<br>想看还有几个任务在跑，点上面的状态条。'
   d.appendChild(h2); d.appendChild(p)
@@ -530,15 +890,37 @@ function dropPending(){
 function streamText(txt){
   if (!S.streaming) {
     var r = rowNode('ai')
-    r.appendChild(bubNode(''))
+    var w = bubNode('')
+    r.appendChild(w)
     log.appendChild(r)
-    S.streaming = { row:r, bub:r.lastElementChild, text:'' }
+    var b = w.querySelector('.bub') || w
+    b.classList.add('streaming')     // 尾部渐隐，表示"还在往下长"
+    S.streaming = { row:r, bub:b, text:'' }
+    noteIncoming()
   }
   S.streaming.text += txt
   S.streaming.bub.textContent = S.streaming.text
   if (nearBottom()) toBottom()
 }
-function finishStreaming(){ S.streaming = null }
+
+/** 流式收尾：**必须把临时气泡从页面上拿掉**。
+ *
+ *  早先的版本只把 S.streaming 置空、不删节点，而最终文本随后又会由
+ *  assistant/message 作为正式条目重新渲染 —— 同一段话于是在页面上显示两遍。
+ *  如果服务端始终没给正式消息（只有增量就 turn/end 了），这里补一条，
+ *  免得文本凭空消失。
+ */
+function finishStreaming(){
+  if (!S.streaming) return
+  var t = S.streaming.text
+  try { if (S.streaming.row && S.streaming.row.parentNode) S.streaming.row.remove() } catch (e) {}
+  S.streaming = null
+  if (!t) return
+  var last = S.items.length ? S.items[S.items.length - 1] : null
+  if (last && last.kind === 'assistant' && last.text === t) return
+  S.items.push({ kind:'assistant', text:t, interrupted:false })
+  renderAt(S.items.length - 1)
+}
 
 // ---------------------------------------------------------------------------
 // 流式连接
@@ -581,10 +963,21 @@ function openStream(){
 // ---------------------------------------------------------------------------
 // 交互
 // ---------------------------------------------------------------------------
+// 图标一律用内联 SVG，不用 ➤ ■ 这类字符：字符图标在不同字体下大小与基线都不同，
+// 换台设备就变形，也没法用令牌统一控制粗细和颜色。
+// 下面两个字符串是**文件内常量**，不含任何宿主或模型来的内容，所以这里用 innerHTML 安全。
+var ICON_SEND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M12 6l6 6-6 6"/></svg>'
+var ICON_STOP = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>'
+// 工具卡的状态图标。定义在本行、用在上面的 toolNode() 里 —— var 声明会提升，
+// 而 toolNode() 是在脚本顶层跑完之后才被调用的，所以顺序没问题。
+var ICON_OK   = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>'
+var ICON_FAIL = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>'
+var ICON_CHEV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>'
+var ICON_DOWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>'
 function syncSend(){
   var b = $('send')
-  if (S.running) { b.textContent = '■'; b.classList.add('stop'); b.setAttribute('aria-label','停止') }
-  else { b.textContent = '➤'; b.classList.remove('stop'); b.setAttribute('aria-label','发送') }
+  if (S.running) { b.innerHTML = ICON_STOP; b.classList.add('stop'); b.setAttribute('aria-label','停止') }
+  else { b.innerHTML = ICON_SEND; b.classList.remove('stop'); b.setAttribute('aria-label','发送') }
 }
 function setSub(t){ $('sessSub').textContent = t || '' }
 // 会话标题。开场快照和后续事件里都会带 session/title 帧，
@@ -898,6 +1291,41 @@ $('input').addEventListener('keydown', function(e){
 $('sessBtn').addEventListener('click', openSessions)
 $('menuBtn').addEventListener('click', openSessions)
 $('status').addEventListener('click', openStatus)
+
+// ── 深浅色切换 ────────────────────────────────────────────────────────────
+// 默认跟随系统；用户手动切过之后以手动为准，并记住选择。
+// 状态栏颜色从令牌里读，不在这里写死 hex —— 令牌改了它自动跟着改。
+function applyTheme(t, remember){
+  var dark = (t === 'dark')
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  $('themeBtn').setAttribute('aria-pressed', dark ? 'true' : 'false')
+  var bgc = ''
+  try {
+    bgc = getComputedStyle(document.documentElement).getPropertyValue('--dsw-alias-bg-base').trim()
+  } catch (e) {}
+  if (bgc) {
+    var ms = document.querySelectorAll('meta[name="theme-color"]')
+    for (var i = 0; i < ms.length; i++) {
+      var mm = ms[i].getAttribute('media') || ''
+      // 带 media 的两个 meta 分别对应系统亮/暗；手动覆盖时改与当前主题相符的那个。
+      if ((/dark/i.test(mm)) === dark) ms[i].setAttribute('content', bgc)
+    }
+  }
+  if (remember) { try { localStorage.setItem('taskwatch.theme', dark ? 'dark' : 'light') } catch (e) {} }
+}
+applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light', false)
+$('themeBtn').addEventListener('click', function(){
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark'
+  applyTheme(dark ? 'light' : 'dark', true)
+})
+// 用户没手动选过时，跟随系统的切换。老 Safari 没有 addEventListener，用 try 兜住。
+try {
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change', function(e){
+    var saved = ''
+    try { saved = localStorage.getItem('taskwatch.theme') || '' } catch (err) {}
+    if (saved !== 'light' && saved !== 'dark') applyTheme(e.matches ? 'dark' : 'light', false)
+  })
+} catch (e) {}
 
 document.addEventListener('visibilitychange', function(){
   if (document.hidden) { stopPolling(); return }

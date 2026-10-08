@@ -217,10 +217,16 @@ check('page.html 的内联脚本可编译', pageSyntaxError === null, pageSyntax
 // 说明白这条断言的能力边界：它是**代理**，不是证明 —— 它盯住的是已知的四个
 // 入口（模型正文、工具提示、工具名、会话标题），不是"全页面无 XSS"。
 // 之所以仍然值得写：这四处正是唯一会渲染外部文本的地方，改动时踩中的概率最高。
-check('page.html 的气泡用 textContent 写入（模型正文不进 innerHTML）',
-  /\.textContent\s*=\s*text/.test(page))
-check('page.html 的工具提示用 textContent 写入',
-  /a\.textContent\s*=\s*it\.hint/.test(page))
+// 2026-10-08 改：这两条原先钉的是**具体写法**（`b.textContent = text`、
+// `a.textContent = it.hint`），加入代码块渲染后写法变了（改用 createTextNode 与嵌套
+// 的 <code>），断言于是失败 —— 但安全性并没有变差。所以改成守**性质**：
+// 模型正文只能落到文本节点上，绝不允许喂进 innerHTML。
+check('page.html 的气泡正文只走文本节点（模型正文不进 innerHTML）',
+  !/\.innerHTML\s*=\s*(s|text|it\.hint|it\.text)\b/.test(page) &&
+  (/b\.textContent\s*=\s*s/.test(page) || /createTextNode\(/.test(page)))
+check('page.html 的工具提示只走文本节点（命令内容不进 innerHTML）',
+  /codeEl\.textContent\s*=\s*it\.hint/.test(page) &&
+  !/\.innerHTML\s*=\s*it\.hint/.test(page))
 check('page.html 的工具名经 toolLabel 后用 textContent 写入',
   /nm\.textContent\s*=\s*toolLabel\(/.test(page))
 
@@ -313,6 +319,126 @@ check('ETag 对 generatedAt 免疫（否则 304 永不命中）',
   host.etagOf(etagBase) === host.etagOf(etagNewer))
 check('ETag 是带引号的合法值',
   /^"[0-9a-f]{20}"$/.test(host.etagOf(etagBase)), host.etagOf(etagBase))
+
+// ── P2：溢出与折叠（方案 docs/ui-ux-plan.md §2.3 的八条） ──────────────────
+// 盯的是"机制存在且能被用户触达"，不是"某段 CSS 长得像不像"。
+check('page.html 超长回复会折叠、且能展开（aria-expanded 同步）',
+  /FOLD_CHARS/.test(page) && /classList\.add\('fold'\)/.test(page) &&
+  /classList\.toggle\('open'\)/.test(page) && /aria-expanded/.test(page))
+check('page.html 代码围栏渲染成可自我滚动的代码块，并带复制',
+  /function codeNode/.test(page) && /\.code pre/.test(page) &&
+  /overflow:auto/.test(page))
+check('page.html 复制有两条路径，失败时如实提示（不假装成功）',
+  /navigator\.clipboard/.test(page) && /execCommand\('copy'\)/.test(page) &&
+  /'复制失败'/.test(page))
+check('page.html 工具的长命令可展开、可复制（不再无声截断）',
+  /展开完整内容/.test(page) && /copyText\(it\.hint/.test(page))
+check('page.html 流式结束时移除临时气泡（否则同一段话显示两遍）',
+  /S\.streaming\.row\.remove\(\)/.test(page))
+check('page.html 有回到底部与未读计数',
+  /id="tobottom"/.test(page) && /unseen/.test(page) && /noteIncoming\(\)/.test(page))
+check('page.html 滚动监听是 passive + rAF 节流的（不拖慢滚动）',
+  /\{\s*passive\s*:\s*true\s*\}/.test(page) && /requestAnimationFrame/.test(page))
+check('page.html 流式输出有尾部渐隐、页面禁止横向滚动',
+  /\.bub\.streaming/.test(page) && /mask-image/.test(page) &&
+  /overflow-x:clip/.test(page))
+
+// ── 设计技能清单里的硬性要求（ui-ux-pro-max / impeccable / hallmark） ──────
+check('page.html 触碰区不小于 44px（检索库标为 Critical）',
+  /\.iconbtn\{[^}]*width:44px/.test(page) && /#send\{[^}]*height:44px/.test(page))
+check('page.html 支持 prefers-reduced-motion',
+  /prefers-reduced-motion/.test(page))
+check('page.html 有 :focus-visible 焦点环（键盘可见、触屏不留光圈）',
+  /:focus-visible/.test(page))
+check('page.html 用客户端真实主题令牌，不是自编颜色',
+  /--dsw-alias-label-primary/.test(page) &&
+  /--nb-1000:#0f1115/.test(page) &&
+  // 注意是 -new-color 结尾：客户端的 --dsw-alias-brand-primary 其实是中性色
+  // （亮 #0f1115 / 暗 #f9fafb），蓝色是 -new-color。名字很有欺骗性，钉死它。
+  /--dsw-alias-brand-primary-new-color:#4176e6/.test(page) &&
+  !/--dsw-alias-brand-primary:#4176e6/.test(page))
+check('page.html 采纳了包内暗色品牌蓝的真实覆盖 #5686fe',
+  /--dsw-alias-brand-primary-new-color:#5686fe/.test(page))
+check('page.html 明暗两套令牌都有（暗色只有一份）',
+  /:root\[data-theme='dark'\]/.test(page) &&
+  // 按"含令牌声明的暗色块"计数，不能数选择器出现次数 ——
+  // base 规则里还有一个 :root[data-theme='dark']{color-scheme:dark}。
+  (page.match(/:root\[data-theme='dark'\]\s*\{[^}]*--dsw-/g) || []).length === 1)
+
+// 结构图标必须是矢量 SVG，不能是 emoji 或 ☰ ➤ ✕ ✓ 这类字符：
+// 字符图标在不同字体下大小、基线、粗细都不一样，换台设备就变形。
+// 注释里提到这些字符是允许的，所以先剥掉注释再判。
+const pageBare = page.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
+check('page.html 没有用 emoji 或字符当结构图标',
+  !/[\u{1F300}-\u{1FAFF}]/u.test(pageBare) && !/[☰➤✕✓👋]/.test(pageBare))
+
+// ── 令牌防漂移：页面的内联子集必须与 lib/tokens.css 逐条一致 ────────────────
+//
+// lib/tokens.css 是从客户端安装包（app.asar 里 @deepseek-ai/dsh-client-ui-theme
+// 注入的 design-platform.css）全量提取的 246 个令牌，可重跑且逐字节确定。
+// 页面只内联实际用到的子集（少一次请求、SW 更好缓存），但两者一旦漂移，
+// "和客户端同一套令牌"这句话就不成立了 —— 所以这儿逐条比，而不是靠人眼。
+const stripCssComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '')
+function cssBlock(css, re) {
+  const m = re.exec(css)
+  if (!m) return null
+  const j = css.indexOf('{', m.index)
+  if (j < 0) return null
+  let depth = 0, k = j
+  for (; k < css.length; k++) {
+    if (css[k] === '{') depth++
+    else if (css[k] === '}') { depth--; if (!depth) break }
+  }
+  return css.slice(j + 1, k)
+}
+function cssDecls(txt) {
+  const out = {}
+  if (txt) for (const m of txt.matchAll(/(--[A-Za-z0-9-]+)\s*:\s*([^;}]+)/g)) out[m[1].trim()] = m[2].trim()
+  return out
+}
+const normColor = (v) => {
+  let s = String(v).trim().toLowerCase().replace(/\s+/g, '')
+  if (/^#[0-9a-f]{3}$/.test(s)) s = '#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3]
+  return s
+}
+
+let tokensCss = ''
+try {
+  tokensCss = stripCssComments(readFileSync(join(ROOT, 'lib', 'tokens.css'), 'utf8'))
+} catch (e) { /* 下面断言会明确报出来，不静默通过 */ }
+check('lib/tokens.css 存在（页面令牌的权威源）', tokensCss.length > 1000)
+
+if (tokensCss) {
+  const pageCss = stripCssComments(page)
+  // 页面的静态色阶（--nb-*）在这里定义，用来把 var() 展开成具体色再比。
+  const ramp = cssDecls(cssBlock(pageCss, /(?:^|\n)\s*:root\s*\{/))
+  const resolveVar = (v, seen) => {
+    seen = seen || new Set()
+    const m = /^var\(\s*(--[A-Za-z0-9-]+)\s*\)$/.exec(String(v).trim())
+    if (!m || seen.has(m[1])) return v
+    seen.add(m[1])
+    return ramp[m[1]] ? resolveVar(ramp[m[1]], seen) : v
+  }
+  for (const [label, pageRe, tokRe] of [
+    ['亮色', /(?:^|\n)\s*:root\s*\{/, /(?:^|\n)\s*:root\s*\{/],
+    ['暗色', /:root\[data-theme='dark'\]\s*\{/, /(?:^|\n)\[data-theme='dark'\]\s*\{/]
+  ]) {
+    const pv = cssDecls(cssBlock(pageCss, pageRe))
+    const tv = cssDecls(cssBlock(tokensCss, tokRe))
+    const bad = []
+    let compared = 0
+    for (const k of Object.keys(pv)) {
+      if (!k.startsWith('--dsw-alias-')) continue
+      if (!(k in tv)) continue
+      compared++
+      if (normColor(resolveVar(pv[k])) !== normColor(tv[k])) {
+        bad.push(`${k}: 页面=${normColor(resolveVar(pv[k]))} tokens.css=${normColor(tv[k])}`)
+      }
+    }
+    check(`page.html 的${label}令牌与 lib/tokens.css 逐条一致（比对 ${compared} 条）`,
+      compared >= 10 && bad.length === 0, bad.join(' | '))
+  }
+}
 
 console.log(failures === 0 ? '\n全部通过' : `\n${failures} 项失败`)
 process.exit(failures === 0 ? 0 : 1)
