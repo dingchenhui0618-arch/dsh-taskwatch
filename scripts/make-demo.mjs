@@ -6,7 +6,17 @@
  *
  * 为什么用生成而不是手写：手写一份 demo 就意味着 CSS 与结构有两份副本，一定会漂移，
  * 截图会慢慢变成"一张不像现在 UI 的图"。这里直接复用真实的 lib/page.html，只把
- * 取数逻辑换掉，所以只要 page.html 变了，重新跑本脚本截图就与实现一致。
+ * 取数与启动逻辑换掉，所以只要 page.html 变了，重新跑本脚本截图就与实现一致。
+ *
+ * ⚠️ 2026-10-08 的真实教训：本脚本原先靠**一个字面量锚点**找 page.html 结尾的
+ * `tick();`。那一轮 UI 重构把启动行换成了 async IIFE，脚本当场失效 —— 而
+ * `npm run check` 覆盖不到它，于是 CI 全绿、README 却指向一个生成不出来、内容
+ * 停在旧界面的演示页，整整一个版本没人发现。
+ *
+ * 所以现在：① 锚点改成**结构性**的（匹配启动 IIFE，而不是某一行字面量）；
+ * ② 本文件导出 `buildDemo()` 与 `BOOT_ANCHOR`，由 check-bundle.mjs 断言锚点仍然
+ * 命中、且 docs/demo.html 与当前 page.html 构建结果一致（时间戳归一化后比对）。
+ * 只要 page.html 再动结构而这里没跟上，契约测试就会红。
  *
  * 用法：node scripts/make-demo.mjs
  */
@@ -17,155 +27,225 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
 
-const page = readFileSync(join(ROOT, 'lib', 'page.html'), 'utf8')
+/**
+ * 启动块的锚点。
+ *
+ * page.html 结尾原本是裸的 `tick();`，2026-10-08 的重构换成了这个 async IIFE。
+ * 匹配 IIFE 的整体结构（允许 await 序列变化），比匹配某一行字面量稳得多。
+ */
+export const BOOT_ANCHOR = /;\(async function\(\)\{[\s\S]*?\}\)\(\)\n/
 
-const now = Date.now()
-const S = (sec) => now - sec * 1000
-
-// 全部为虚构内容：没有真实仓库、没有真实路径、没有真实会话。
-const DEMO = {
-  generatedAt: now,
-  offline: false,
-  errors: [],
-  totals: { sessions: 4, running: 2, jobs: 5, jobsRunning: 3, subagents: 2, workflows: 1, pending: 1 },
-  pending: [
-    {
-      title: '等待确认：删除 3 个过期缓存目录',
-      detail: '即将对 build/cache 下的过期产物执行清理，需要你先确认。',
-      kind: 'approval/request',
-      session: 'session-demo-a',
-      at: S(45),
-    },
-  ],
-  sessions: [
-    {
-      id: 'session-demo-a',
-      title: '重构支付模块的重试逻辑',
-      running: true,
-      activeJobs: 2,
-      live: true,
-      origin: 'root',
-      depth: 0,
-      preset: 'cordis',
-      lastActivity: S(3),
-      goal: {
-        phase: 'active',
-        roundsStarted: 7,
-        maxGoalRounds: 50,
-        activation: 'armed',
-        objective: '把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。',
+/** 演示用的虚构快照。字段形状必须与 /taskwatch/data 一致。 */
+function demoData(now) {
+  const S = (sec) => now - sec * 1000
+  return {
+    generatedAt: now,
+    offline: false,
+    errors: [],
+    totals: { sessions: 4, running: 2, jobs: 5, jobsRunning: 3, subagents: 2, workflows: 1, pending: 1 },
+    pending: [
+      {
+        title: '等待确认：删除 3 个过期缓存目录',
+        detail: '即将对 build/cache 下的过期产物执行清理，需要你先确认。',
+        kind: 'approval/request',
+        session: 'session-demo-a',
+        at: S(45),
       },
-    },
-    {
-      id: 'session-demo-b',
-      title: '整理季度报表导出',
-      running: true,
-      activeJobs: 1,
-      live: true,
-      origin: 'root',
-      depth: 0,
-      preset: 'cordis',
-      lastActivity: S(18),
-      goal: { phase: 'active', roundsStarted: 3, maxGoalRounds: 20, activation: 'armed', objective: '导出去年四个季度的报表并核对口径。' },
-    },
-    {
-      id: 'session-demo-c',
-      title: '排查登录态失效问题',
-      running: false,
-      activeJobs: 0,
-      live: true,
-      origin: 'root',
-      depth: 0,
-      preset: 'cordis',
-      lastActivity: S(2400),
-      goal: null,
-    },
-    {
-      id: 'session-demo-d',
-      title: '更新部署文档',
-      running: false,
-      activeJobs: 0,
-      live: false,
-      origin: 'subagent',
-      depth: 1,
-      preset: 'cordis',
-      lastActivity: S(8600),
-      goal: null,
-    },
-  ],
-  jobs: [
-    { id: 'job-1', label: 'pnpm test --filter payments', kind: 'pwsh', status: 'running', owner: 'session-demo-a', startedAt: S(310), finishedAt: 0 },
-    { id: 'job-2', label: 'node scripts/build.mjs', kind: 'pwsh', status: 'running', owner: 'session-demo-a', startedAt: S(95), finishedAt: 0 },
-    { id: 'job-3', label: 'node scripts/export-report.mjs --quarter Q3', kind: 'pwsh', status: 'running', owner: 'session-demo-b', startedAt: S(720), finishedAt: 0 },
-    { id: 'job-4', label: 'git log --oneline -50', kind: 'pwsh', status: 'done', owner: 'session-demo-c', startedAt: S(3000), finishedAt: S(2998) },
-    { id: 'job-5', label: 'node scripts/make-icons.mjs', kind: 'pwsh', status: 'failed', owner: 'session-demo-b', startedAt: S(5200), finishedAt: S(5195) },
-  ],
-  subagents: [
-    { id: 'agent-demo-1', label: '核对接口字段', mode: 'subagent', activity: 'running', depth: 1, parent: 'session-demo-a' },
-    { id: 'agent-demo-2', label: '翻译发布说明', mode: 'subagent', activity: 'idle', depth: 1, parent: 'session-demo-b' },
-  ],
-  workflows: [
-    { id: 'wf-demo-1', name: '回归测试与发布检查', phase: 'verify', logs: 42, startedAt: S(1800) },
-  ],
+    ],
+    sessions: [
+      {
+        id: 'session-demo-a',
+        title: '重构支付模块的重试逻辑',
+        running: true,
+        activeJobs: 2,
+        live: true,
+        origin: 'root',
+        depth: 0,
+        preset: 'cordis',
+        cwd: '~/projects/payments',
+        updatedAt: S(3),
+        goal: {
+          phase: 'active',
+          roundsStarted: 7,
+          maxGoalRounds: 50,
+          activation: 'armed',
+          objective: '把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。',
+        },
+      },
+      {
+        id: 'session-demo-b',
+        title: '整理季度报表导出',
+        running: true,
+        activeJobs: 1,
+        live: true,
+        origin: 'root',
+        depth: 0,
+        preset: 'cordis',
+        cwd: '~/projects/reports',
+        updatedAt: S(18),
+        goal: { phase: 'active', roundsStarted: 3, maxGoalRounds: 20, activation: 'armed', objective: '导出去年四个季度的报表并核对口径。' },
+      },
+      {
+        id: 'session-demo-c',
+        title: '排查登录态失效问题',
+        running: false,
+        activeJobs: 0,
+        live: true,
+        origin: 'root',
+        depth: 0,
+        preset: 'cordis',
+        cwd: '~/projects/web',
+        updatedAt: S(2400),
+        goal: null,
+      },
+      {
+        id: 'session-demo-d',
+        title: '更新部署文档',
+        running: false,
+        activeJobs: 0,
+        live: false,
+        origin: 'subagent',
+        depth: 1,
+        preset: 'cordis',
+        cwd: '~/projects/docs',
+        updatedAt: S(8600),
+        goal: null,
+      },
+    ],
+    jobs: [
+      { id: 'job-1', label: 'pnpm test --filter payments', kind: 'pwsh', status: 'running', owner: 'session-demo-a', startedAt: S(310), finishedAt: 0 },
+      { id: 'job-2', label: 'node scripts/build.mjs', kind: 'pwsh', status: 'running', owner: 'session-demo-a', startedAt: S(95), finishedAt: 0 },
+      { id: 'job-3', label: 'node scripts/export-report.mjs --quarter Q3', kind: 'pwsh', status: 'running', owner: 'session-demo-b', startedAt: S(720), finishedAt: 0 },
+      { id: 'job-4', label: 'git log --oneline -50', kind: 'pwsh', status: 'done', owner: 'session-demo-c', startedAt: S(3000), finishedAt: S(2998) },
+      { id: 'job-5', label: 'node scripts/make-icons.mjs', kind: 'pwsh', status: 'failed', owner: 'session-demo-b', startedAt: S(5200), finishedAt: S(5195) },
+    ],
+    subagents: [
+      { id: 'agent-demo-1', label: '核对接口字段', mode: 'subagent', activity: 'running', depth: 1, parent: 'session-demo-a' },
+      { id: 'agent-demo-2', label: '翻译发布说明', mode: 'subagent', activity: 'idle', depth: 1, parent: 'session-demo-b' },
+    ],
+    workflows: [
+      { id: 'wf-demo-1', name: '回归测试与发布检查', phase: 'verify', logs: 42, startedAt: S(1800) },
+    ],
+  }
 }
 
-const CONVO = {
-  loading: false,
-  error: null,
-  total: 6,
-  messages: [
-    { role: 'user', text: '把重试改成指数退避，先只动回调那一处。', tools: [], at: S(900) },
-    { role: 'assistant', text: '已定位到回调入口。当前是固定 5 秒重试、最多 3 次。', tools: ['grep', 'read'], at: S(870) },
-    { role: 'assistant', text: '改成基础 2 秒、上限 60 秒的退避，并保留最后一次失败的原始异常。', tools: ['edit'], at: S(600) },
-    { role: 'assistant', text: '', tools: ['pwsh'], at: S(320) },
-    { role: 'assistant', text: '单测通过（12/12）。幂等键的重复投递用例也补上了。', tools: [], at: S(180) },
-    { role: 'assistant', text: '还差一件事：缓存目录的清理要你确认后才执行。', tools: ['ask_user_question'], at: S(45) },
-  ],
+/**
+ * 演示对话。形状是页面内部的**归一化后**条目（见 page.html 的 normUser /
+ * normAssistant / toolItem），不是宿主事件原文 —— 这样演示页不需要模拟事件流。
+ *
+ * 有意安排了两件事，好让截图能体现这一版的新能力：
+ *   · 连续 4 次工具调用 → 折叠成一行「4 个步骤」（其中 1 项失败，失败永不隐藏）
+ *   · 一段带标题 / 列表 / 行内代码 / 代码块的回复 → 轻量 markdown 渲染
+ */
+function demoItems(now) {
+  const S = (sec) => now - sec * 1000
+  return [
+    { kind: 'user', text: '把回调的重试从固定间隔改成指数退避，先只动这一处。' },
+    { kind: 'assistant', text: '已定位到入口。当前是**固定 5 秒**、最多 3 次，退避逻辑抽在 `retryPolicy` 里。' },
+    // 工具条的 status 用的是页面内部的 ok / no（见 page.html 的 markTool），
+    // 不是 /taskwatch/data 里 jobs 的 running/done/failed —— 两者词表不同，别混。
+    { kind: 'tool', callId: 't1', name: 'grep', hint: 'retryPolicy', status: 'ok' },
+    { kind: 'tool', callId: 't2', name: 'read', hint: 'src/payments/callback.ts', status: 'ok' },
+    { kind: 'tool', callId: 't3', name: 'edit', hint: 'src/payments/retry.ts', status: 'ok' },
+    { kind: 'tool', callId: 't4', name: 'pwsh', hint: 'pnpm test --filter payments', status: 'no' },
+    {
+      kind: 'assistant',
+      text: '## 改动\n\n- 基础 2 秒，上限 60 秒\n- 保留最后一次失败的原始异常\n\n```ts\nconst delay = Math.min(60000, 2000 * 2 ** attempt)\n```\n\n单测 12/12 通过，幂等键的重复投递用例也补上了。',
+    },
+    { kind: 'assistant', text: '还差一件事：缓存目录的清理要你确认后才执行。' },
+  ]
 }
 
-const boot = [
-  `var DEMO=${JSON.stringify(DEMO)};`,
-  `var DEMO_CONVO=${JSON.stringify(CONVO)};`,
-  '// 演示页：不轮询、不联网、任何会话都能点开看同一份示例对话。',
-  '// tick / loadConvo 都是函数声明（会提升），所以在这里覆盖是安全的。',
-  'tick=function(){};',
-  'loadConvo=function(sid){CONVO[sid]={loading:false,error:null,total:DEMO_CONVO.messages.length,'
-    + 'messages:DEMO_CONVO.messages};render(DEMO,true)};',
-  'render(DEMO);',
-  "OPEN['session-demo-a']=true;",
-  "CONVO['session-demo-a']=DEMO_CONVO;",
-  'render(DEMO,true);',
-].join('\n')
-
-let out = page
-
-// 把 page.html 结尾的「启动轮询」那一行整行换掉，演示页于是不轮询、不联网。
-//
-// 用锚定行首的正则而不是精确字符串：这行已经因为加了可见性判断改动过一次，
-// 每次都要同步本脚本太脆。行首 tick(); 不会和 function tick(){ 混淆。
-const tickLine = /^tick\(\);.*$/m
-if (!tickLine.test(out)) {
-  console.error('找不到取数启动行，page.html 结构变了，请同步更新本脚本')
-  process.exit(1)
+/** 演示页的启动块：接管网络 + 直接喂状态，不轮询、不联网。 */
+function demoBoot(now) {
+  return [
+    `var DEMO=${JSON.stringify(demoData(now))};`,
+    `var DEMO_ITEMS=${JSON.stringify(demoItems(now))};`,
+    '// 演示页：不轮询、不联网、任何会话都能点开看同一份示例对话。',
+    '// tick / ensureSession / startPolling / openStream 都是函数声明（会提升），覆盖安全。',
+    'tick=async function(){};',
+    'ensureSession=async function(){};',
+    'startPolling=function(){};',
+    'stopPolling=function(){};',
+    'openStream=function(){};',
+    '// fetch 也接管掉：这样页面自己的 renderList/同步接口路径仍然走原代码，',
+    '// 但永远拿的是假数据，file:// 直接打开也不会发出任何真实请求。',
+    'window.fetch=function(u){',
+    "  var p=String(u).split('?')[0];",
+    '  function reply(v){return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(v)}})}',
+    "  if(p==='/taskwatch/chat/sessions')return reply({sessions:DEMO.sessions});",
+    "  if(p==='/taskwatch/data')return reply(DEMO);",
+    '  return reply({});',
+    '};',
+    'lastData=DEMO;',
+    'syncStatus();',
+    'S.chatReady=true;',
+    'S.sessions=DEMO.sessions;',
+    "selectSession('session-demo-a');",
+    'S.items=DEMO_ITEMS;',
+    'renderAll();',
+    "setSub('演示数据 · 非真实状态');",
+  ].join('\n')
 }
-out = out.replace(tickLine, boot)
 
-// 演示页不做轮询、不注册 service worker（file:// 下也没意义）。
-out = out.replace(
-  /if\('serviceWorker' in navigator\)\{[\s\S]*?\}\n/,
-  '/* demo: 不注册 service worker */\n'
-)
-out = out.replace(/<title>[^<]*<\/title>/, '<title>任务监控 · 演示数据</title>')
-out = out.replace(
-  /<footer id="foot">[^<]*<\/footer>/,
-  '<footer id="foot">演示数据 · 非真实状态</footer>'
-)
-out = out.replace(/<div id="meta">[^<]*<\/div>/, '<div id="meta">演示数据</div>')
+/**
+ * 严格替换：pattern 必须命中，否则抛错。
+ *
+ * 为什么必须这样：`String.replace` 匹配不到时会**静默返回原串**。旧版就是这样一路
+ * 悄悄失效的 —— 重构把页脚换成输入框容器、去掉了 `id="meta"` 之后，那两条替换再也
+ * 没生效过，而脚本仍然打印"已生成"，谁都不会发现。演示页的每一次改写要么确定做到，
+ * 要么立刻报错。
+ */
+function mustReplace(out, re, repl, label) {
+  if (!re.test(out)) throw new Error('演示页改写失败：' + label + '（page.html 的结构变了）')
+  return out.replace(re, repl)
+}
 
-mkdirSync(join(ROOT, 'docs'), { recursive: true })
-writeFileSync(join(ROOT, 'docs', 'demo.html'), out)
+/** page.html -> demo.html。纯函数，供脚本与契约测试共用。 */
+export function buildDemo(page, now = Date.now()) {
+  let out = page
+  if (!BOOT_ANCHOR.test(out)) {
+    throw new Error('找不到启动块（page.html 的结构变了），请同步更新 scripts/make-demo.mjs 的 BOOT_ANCHOR')
+  }
+  out = out.replace(BOOT_ANCHOR, demoBoot(now) + '\n')
 
-console.log('已生成 docs/demo.html')
-console.log('  取自 lib/page.html（' + page.length + ' 字符）')
-console.log('  演示会话数 ' + DEMO.sessions.length + '，后台任务 ' + DEMO.jobs.length + '，对话 ' + CONVO.messages.length + ' 条')
-console.log('  已展开 session-demo-a 以展示详情与对话区')
+  // 演示页不注册 service worker（file:// 下也没意义）。
+  //
+  // ⚠️ 正则必须容忍空格：page.html 里写的是 `if ('serviceWorker' in navigator) {`。
+  // 原版正则写成了 `if('serviceWorker'...`，匹配不上，于是演示页一直在注册真实 SW。
+  out = mustReplace(
+    out,
+    /if\s*\(\s*'serviceWorker'\s+in\s+navigator\s*\)\s*\{[\s\S]*?\}\n/,
+    '/* demo: 不注册 service worker */\n',
+    '剥离 service worker 注册块'
+  )
+
+  out = mustReplace(out, /<title>[^<]*<\/title>/, '<title>任务监控 · 演示数据</title>', '替换标题')
+
+  // 页脚曾经是个带 id="foot" 的说明行，2026-10-08 已改成输入框容器；
+  // 演示标记改由启动块里的 setSub() 写入（见 demoBoot），不要再往 DOM 里塞。
+  return out
+}
+
+/** 时间戳归一化：让"构建结果是否与提交的 demo.html 一致"可以稳定比较。 */
+export function normalizeDemo(html) {
+  return html.replace(/\d{10,}/g, '#')
+}
+
+// 作为脚本直接运行时才写文件；被 import 时不产生副作用。
+if (process.argv[1] && process.argv[1].endsWith('make-demo.mjs')) {
+  const page = readFileSync(join(ROOT, 'lib', 'page.html'), 'utf8')
+  let out
+  try {
+    out = buildDemo(page)
+  } catch (e) {
+    console.error(e.message)
+    process.exit(1)
+  }
+  mkdirSync(join(ROOT, 'docs'), { recursive: true })
+  writeFileSync(join(ROOT, 'docs', 'demo.html'), out)
+  console.log('已生成 docs/demo.html')
+  console.log('  取自 lib/page.html（' + page.length + ' 字符）')
+  console.log('  演示会话数 4，后台任务 5，对话 9 条（含一段 4 步工具折叠）')
+  console.log('  已展开 session-demo-a 以展示详情与对话区')
+}

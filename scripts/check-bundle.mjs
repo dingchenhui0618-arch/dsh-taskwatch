@@ -462,5 +462,34 @@ if (tokensCss) {
   }
 }
 
+// ── 演示页（docs/demo.html）不能悄悄腐烂 ────────────────────────────────────
+//
+// 2026-10-08 的真实事故：那一轮 UI 重构把 page.html 结尾的启动行从 `tick();` 换成
+// async IIFE，scripts/make-demo.mjs 的字面量锚点当场失效 —— 而这里当时没有覆盖，
+// 于是 CI 全绿、README 指向的演示页却生成不出来、内容停在旧界面，整整一个版本
+// 没人发现。现在：锚点必须命中；提交的 demo.html 必须等于"拿当前 page.html 现算
+// 一遍"的结果（时间戳归一化后逐字节比）。只要 page.html 再动结构而生成器没跟上，
+// 这里立刻红。
+try {
+  const { buildDemo, normalizeDemo, BOOT_ANCHOR } = await import(pathToFileURL(join(HERE, 'make-demo.mjs')).href)
+  check('make-demo 的启动块锚点仍能命中 lib/page.html', BOOT_ANCHOR.test(page))
+
+  const built = normalizeDemo(buildDemo(page, 1760000000000))
+  let committed = ''
+  try { committed = normalizeDemo(readFileSync(join(ROOT, 'docs', 'demo.html'), 'utf8')) } catch (e) { /* 下面报 */ }
+  check('docs/demo.html 与当前 lib/page.html 的构建结果一致（跑 npm run demo 更新）',
+    committed.length > 0 && committed === built,
+    committed.length ? '演示页已过期，请跑 npm run demo' : 'docs/demo.html 不存在或读不到')
+  check('演示页不注册 service worker', !/serviceWorker\s*\.\s*register/.test(committed))
+  // ⚠️ 这里**绝不能**写真实令牌的字面量：这是公开仓库，写进去就等于把凭据前缀
+  // 一起发布。（2026-10-08 我真这么干了，是推送前扫描把自己抓出来的。）
+  // 改用令牌的**形状**匹配 —— 挡住真实数据泄漏的效果一样，但本身不含秘密。
+  check('演示页不含真实数据（令牌形状 / 本机路径 / 中继目录）',
+    committed.length > 0 && !/c_0_[A-Za-z0-9]{16,}|D:\\+Projects|taskwatch-relay/.test(committed))
+  check('演示页带上"非真实数据"的自述', /演示数据/.test(committed))
+} catch (e) {
+  check('演示页生成链可用（生成器可被导入并构建）', false, e.message)
+}
+
 console.log(failures === 0 ? '\n全部通过' : `\n${failures} 项失败`)
 process.exit(failures === 0 ? 0 : 1)

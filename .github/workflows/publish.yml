@@ -42,7 +42,7 @@ jobs:
       - name: Upgrade npm
         run: npm install -g npm@latest
 
-      # lib/ is committed, so there is no build step. This is the same 15-check
+      # lib/ is committed, so there is no build step. This is the same 80-check
       # bundle validation that runs locally.
       - name: Check the bundle
         run: npm run check
