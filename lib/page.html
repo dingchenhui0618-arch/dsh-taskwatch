@@ -378,6 +378,28 @@ footer{
 /* 6. 全页禁止横向滚动：长 URL / 宽表格 / 长代码都不许把页面顶宽。 */
 html,body{overflow-x:clip}
 .bub,.tool,.code pre{overflow-wrap:anywhere}
+
+/* 7. 连续多个工具调用折叠成一行「N 个步骤」。
+      这一条是"内容放不下"里最占地方的：一个回合常常十几步，每步一张卡，
+      几十条下来把对话整个冲掉。折叠后一行讲清「几步、什么状态」，
+      点开才逐条看。运行中默认展开（要看得见进度），全部结束自动收起来。 */
+.toolgroup{width:100%;min-width:0;border:1px solid var(--line);
+  border-radius:var(--dsw-radius-md);background:var(--panel2);overflow:hidden}
+.toolgroup .gh{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;
+  padding:0 12px;text-align:left;color:var(--dim);font-size:13.5px}
+.toolgroup .gh:active{background:var(--panel)}
+.toolgroup .gh .sum{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toolgroup .gh .sum b{color:var(--fg);font-weight:600}
+.toolgroup .gh .dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.toolgroup.busy .gh .dot{background:var(--warn)}
+.toolgroup.bad .gh .dot{background:var(--bad)}
+.toolgroup .gh svg{width:16px;height:16px;flex:0 0 auto;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s ease-out}
+.toolgroup .gh svg.ch{transition:transform .15s ease-out}
+.toolgroup .gh[aria-expanded='true'] svg.ch{transform:rotate(180deg)}
+.toolgroup .gb{padding:0 8px 8px}
+.toolgroup .gb .tool{margin-top:6px}
+.toolgroup .gb[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -797,6 +819,77 @@ function toolNode(it){
   }
   return d
 }
+/** 连续工具调用的分组阈值：连续 ≥3 个才收成一组，1~2 个直接平铺（收起反而多一次点击）。 */
+var TOOL_GROUP_MIN = 3
+
+/** 取 idx 所在的"连续工具段"。返回 null 表示这段不够长、不该分组。 */
+function toolRunAt(idx){
+  if (idx < 0 || idx >= S.items.length || S.items[idx].kind !== 'tool') return null
+  var start = idx, end = idx
+  while (start > 0 && S.items[start - 1].kind === 'tool') start--
+  while (end + 1 < S.items.length && S.items[end + 1].kind === 'tool') end++
+  if (end - start + 1 < TOOL_GROUP_MIN) return null
+  return { start: start, end: end }
+}
+
+/** 把一段连续工具调用收成一行摘要。
+ *
+ *  默认展开还是收起，按状态定（这是"小白也看得懂"的关键，不是装饰）：
+ *    有步骤在跑 → 默认展开，看得见进度
+ *    有失败      → 默认展开，**失败绝不能被折叠藏起来**
+ *    全部完成    → 默认收起成一行，把屏幕让给对话
+ */
+function groupNode(run){
+  var items = S.items.slice(run.start, run.end + 1)
+  var running = 0, failed = 0
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].status === 'run') running++
+    else if (items[i].status === 'no') failed++
+  }
+  var opened = running > 0 || failed > 0
+
+  var box = document.createElement('div')
+  box.className = 'toolgroup' + (running ? ' busy' : failed ? ' bad' : '')
+
+  var head = document.createElement('button')
+  head.type = 'button'
+  head.className = 'gh'
+  head.setAttribute('aria-expanded', opened ? 'true' : 'false')
+
+  var dot = document.createElement('span'); dot.className = 'dot'
+  head.appendChild(dot)
+
+  var sum = document.createElement('span'); sum.className = 'sum'
+  var strong = document.createElement('b'); strong.textContent = items.length + ' 个步骤'
+  sum.appendChild(strong)
+  sum.appendChild(document.createTextNode(
+    running ? ' · ' + running + ' 项进行中'
+      : failed ? ' · ' + failed + ' 项失败'
+        : ' · 全部完成'))
+  head.appendChild(sum)
+
+  var ch = document.createElement('span')
+  ch.innerHTML = ICON_CHEV                       // 文件内常量，非模型文本
+  var csvg = ch.firstChild
+  if (csvg && csvg.setAttribute) csvg.setAttribute('class', 'ch')
+  head.appendChild(ch)
+
+  var body = document.createElement('div')
+  body.className = 'gb'
+  for (var k = 0; k < items.length; k++) body.appendChild(toolNode(items[k]))
+  body.hidden = !opened
+
+  head.addEventListener('click', function () {
+    var collapsing = !body.hidden
+    body.hidden = collapsing
+    head.setAttribute('aria-expanded', collapsing ? 'false' : 'true')
+  })
+
+  box.appendChild(head)
+  box.appendChild(body)
+  return box
+}
+
 function nodeFor(it, idx){
   var r = rowNode(it.kind === 'user' ? 'me' : 'ai')
   r.setAttribute('data-i', String(idx))
@@ -809,12 +902,32 @@ function nodeFor(it, idx){
   return r
 }
 
+/** 分组外面那层 .row：data-i 用这一段工具的**起点**（增量更新靠它定位），
+ *  另挂一个 data-g 标记"这是一行分组"，好和单条工具卡区分开。 */
+function groupRow(run){
+  var r = rowNode('ai')
+  r.setAttribute('data-i', String(run.start))
+  r.setAttribute('data-g', String(run.start))
+  r.appendChild(groupNode(run))
+  return r
+}
+
 /** 全量重建：只在开场快照时用。 */
 function renderAll(){
   log.innerHTML = ''
   if (!S.items.length && S.chatReady) { renderEmpty(); return }
   var frag = document.createDocumentFragment()
-  for (var i = 0; i < S.items.length; i++) frag.appendChild(nodeFor(S.items[i], i))
+  for (var i = 0; i < S.items.length; i++) {
+    if (S.items[i].kind === 'tool') {
+      var run = toolRunAt(i)
+      if (run) {
+        frag.appendChild(groupRow(run))
+        i = run.end                 // 这一段已经收进分组，跳过剩下的
+        continue
+      }
+    }
+    frag.appendChild(nodeFor(S.items[i], i))
+  }
   log.appendChild(frag)
   renderPending()
   toBottom()
@@ -831,6 +944,30 @@ function renderAt(idx){
   if (idx < 0 || idx >= S.items.length) return
   if (log.querySelector('.empty')) log.innerHTML = ''
   var stick = nearBottom()
+
+  // 工具条目可能属于一个分组：那时要整段重建，而不是只换这一条。
+  var run = S.items[idx].kind === 'tool' ? toolRunAt(idx) : null
+  if (run) {
+    var head = log.querySelector('.row[data-g="' + run.start + '"]')
+    if (head) {
+      head.replaceWith(groupRow(run))
+    } else {
+      // 这一段里可能已经单独渲染过几行（刚够格成组的那一刻），先清掉再插入 ——
+      // 否则会出现「分组 + 残留旧行」同时挂在页面上，同一批步骤显示两遍。
+      for (var j = run.start; j <= run.end; j++) {
+        var stray = log.querySelector('.row[data-i="' + j + '"]')
+        if (stray && !stray.getAttribute('data-g')) stray.remove()
+      }
+      var after = log.querySelector('.row[data-i="' + (run.end + 1) + '"]')
+      var row = groupRow(run)
+      if (after) log.insertBefore(row, after)
+      else { log.appendChild(row); noteIncoming() }
+    }
+    renderPending()
+    if (stick) toBottom()
+    return
+  }
+
   var n = nodeFor(S.items[idx], idx)
   var old = log.querySelector('[data-i="' + idx + '"]')
   if (old) old.replaceWith(n)

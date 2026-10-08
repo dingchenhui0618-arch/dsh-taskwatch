@@ -342,6 +342,15 @@ check('page.html 滚动监听是 passive + rAF 节流的（不拖慢滚动）',
 check('page.html 流式输出有尾部渐隐、页面禁止横向滚动',
   /\.bub\.streaming/.test(page) && /mask-image/.test(page) &&
   /overflow-x:clip/.test(page))
+check('page.html 连续多个工具调用会折叠成一行摘要',
+  /TOOL_GROUP_MIN/.test(page) && /function groupNode/.test(page) &&
+  /function toolRunAt/.test(page) && /\.toolgroup/.test(page))
+check('page.html 分组按状态决定默认展开（失败绝不能被折叠藏起来）',
+  /var opened = running > 0 \|\| failed > 0/.test(page) &&
+  /body\.hidden = !opened/.test(page) && /aria-expanded/.test(page))
+check('page.html 分组增量更新会清掉已单独渲染的旧行（同一批步骤不显示两遍）',
+  /data-g=/.test(page) && /stray\.remove\(\)/.test(page) &&
+  /function groupRow/.test(page))
 
 // ── 设计技能清单里的硬性要求（ui-ux-pro-max / impeccable / hallmark） ──────
 check('page.html 触碰区不小于 44px（检索库标为 Critical）',
