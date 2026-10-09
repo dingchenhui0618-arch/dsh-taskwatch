@@ -83,6 +83,7 @@ DSH 的 Web GUI 没有内置鉴权，而默认 preset 往往是 `danger-full-acc
 | `/taskwatch/session?id=&limit=` | JSON | 单个会话的最近对话（`limit` 上限 60，默认 20） |
 | `/taskwatch/file?id=` · `?path=` · `?info=1` | 二进制 / JSON | 交付文件：附件走 `id`，绝对路径走白名单根（图片 / PDF / 文本 / 视频）；`info=1` 只回元数据 |
 | `/taskwatch/chat/sessions` | JSON | 可对话的会话列表（**不含子代理会话**） |
+| `/taskwatch/workspaces` | JSON | 新建对话可选的工作区（现有会话的 `cwd` + 固定候选 + 环境变量追加；只列真实存在的目录） |
 | `/taskwatch/chat/models` | JSON | 可选模型目录 |
 | `/taskwatch/chat/titles?ids=` | JSON | 批量补会话标题（最多 20 个，宿主缓存 10 分钟） |
 | `/taskwatch/chat/page?...` | JSON | 往更早翻会话历史 |
@@ -97,13 +98,27 @@ DSH 的 Web GUI 没有内置鉴权，而默认 preset 往往是 `danger-full-acc
 |---|---|---|
 | `/taskwatch/chat/send` | `{sessionId,text,mode?,timeZone?}` | 给会话发一条消息 |
 | `/taskwatch/chat/cancel` | `{sessionId}` | 停止当前这一轮 |
-| `/taskwatch/chat/create` | `{}` | 新建会话（**不接受客户端指定工作目录**） |
+| `/taskwatch/chat/create` | `{}` 或 `{workspace}` | 新建会话；`workspace` 必须命中 `/taskwatch/workspaces` 列出的路径 |
 | `/taskwatch/chat/model` | `{sessionId,provider,model}` | 切换该会话使用的模型 |
 
 全部注册在 `ctx.webServer` 上，不代理 DSH 自身的 `/api`，也不转发任意路径。
 写入口就只有上面 4 条 —— 契约测试会**正面清点**路由表，增删都会让构建失败
 （早先那条断言写的是"源码里不出现 `method === 'POST'`"。加了 4 个写路由之后它
 照样通过，是条假绿灯：它证明的是"没这么写"，不是"没有这个能力"）。
+
+### 手机能选工作区，但选不了任意目录
+
+「在手机上新开一个对话」得能指定在哪个目录开工，否则只能落在部署默认值上。但
+`sessionController.create()` 收的是绝对路径（`cwd` / `workspaceId`）—— 直接透给公网
+客户端，等于把宿主的磁盘交出去。所以拆成两件事：
+
+- **选择权给手机**：`GET /taskwatch/workspaces` 回候选清单，页面只负责挑；
+- **决定权留服务端**：`POST /taskwatch/chat/create` 拿客户端发来的字符串去清单里
+  **逐字比对**，命中才写进 `cwd`，否则直接报错。
+
+清单三个来源：现有会话的 `cwd`（你最近在哪儿干活，天然是你自己认过的目录）、
+环境变量 `DSH_TASKWATCH_WORKSPACES`（`;` 分隔，默认 `D:\Projects`，装到别处改它）、
+固定候选。不存在的目录用 `statSync` 过滤掉 —— 手机上少一个点进去才报错的入口。
 
 ### 对话路由为什么这么薄
 

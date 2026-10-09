@@ -522,6 +522,33 @@ html,body{overflow-x:clip}
 #lb .x{position:absolute;top:calc(8px + env(safe-area-inset-top));right:10px;width:44px;height:44px;
   border-radius:50%;border:1px solid rgba(255,255,255,.34);background:rgba(255,255,255,.12);
   color:#fff;font-size:18px;line-height:1}
+/* 工作区选择：新建对话前先定在哪个目录开。
+   清单只有服务端能给（见 host 侧注释）—— 这层 UI 只负责"挑"，不负责"拼路径"。
+   每项 52px 高，图省事把常用的放前面；路径靠右对齐截断成 …\项目名，因为 Windows
+   路径的有用信息在尾巴上。 */
+#wsp{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;
+  background:rgba(8,10,14,.42)}
+#wsp.on{display:flex}
+#wsp .box{width:100%;max-height:78vh;overflow-y:auto;background:var(--panel);
+  border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+  padding:8px 12px calc(16px + var(--safe-b));
+  transform:translateY(16px);opacity:0;
+  transition:transform var(--mo-base) var(--mo-ease),opacity var(--mo-base) var(--mo-ease)}
+#wsp.on .box{transform:none;opacity:1}
+#wsp h4{margin:8px 6px 10px;font-size:13px;font-weight:600;color:var(--dim)}
+#wsp .it{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;margin:6px 0;
+  padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);
+  color:var(--fg);text-align:left;font:inherit;font-size:15px;cursor:pointer}
+#wsp .it:active{background:var(--panel)}
+#wsp .it .txt{flex:1;min-width:0}
+#wsp .it .nm{display:block;font-weight:600}
+#wsp .it .pt{display:block;font-size:12px;color:var(--dim);margin-top:2px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+#wsp .it .tag{flex:0 0 auto;font-size:11px;color:var(--faint);border:1px solid var(--line);
+  border-radius:999px;padding:2px 8px}
+@media (prefers-reduced-motion: reduce){
+  #wsp .box{transition:none;transform:none;opacity:1}
+}
 /* ══ 10. 纸墨微动 ──────────────────────────────────────────────────────
    这一节的规矩，写给下一个改这里的人：
 
@@ -2093,22 +2120,70 @@ $('input').addEventListener('keydown', function(e){
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!S.running) send() }
 })
 $('sessBtn').addEventListener('click', openSessions)
-$('newBtn').addEventListener('click', newSession)
+$('newBtn').addEventListener('click', openWsPicker)
 $('status').addEventListener('click', openStatus)
 
-/** 右上角「+」：新建一个会话并立刻切过去。
- *  宿主刻意不接受客户端传 cwd（手机能指定任意工作目录是另一档风险），
- *  所以这里只发一个空请求，工作目录落在部署默认值上。 */
-async function newSession(){
+function closeWsPicker(){ var el = $('wsp'); if (el) el.classList.remove('on') }
+
+/** 右上角「+」：先选工作区，再新建并切过去。
+ *
+ *  清单来自 /taskwatch/workspaces，是**服务端列出来的**：客户端能挑，但挑不了清单外的
+ *  路径（宿主侧只采纳逐字命中的那一条）。所以"手机上想开在哪儿"和"手机能碰哪些磁盘"
+ *  是两件事，后者仍然由服务端决定。
+ */
+async function openWsPicker(){
+  if (S.running) { setSub('当前有任务在跑，先停下再新建'); return }
+  var el = $('wsp')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'wsp'
+    el.innerHTML = '<div class="box" role="dialog" aria-modal="true" aria-label="选择新对话的工作区">' +
+      '<h4>新对话开在哪个工作区</h4><div class="list"></div></div>'
+    el.addEventListener('click', function(e){ if (e.target === el) closeWsPicker() })
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeWsPicker() })
+    document.body.appendChild(el)
+  }
+  var list = el.querySelector('.list')
+  list.textContent = ''
+  setSub('正在取工作区…')
+  var rows = []
+  try {
+    var r = await fetch('/taskwatch/workspaces', { cache:'no-store' }).then(function(x){ return x.json() })
+    rows = (r && r.workspaces) || []
+    setSub(rows.length ? '' : ((r && r.error) ? ('取工作区失败：' + r.error) : '没有可选工作区，只能用默认'))
+  } catch (e) { setSub('取工作区失败：' + e.message) }
+
+  var mkItem = function(label, sub, tag, path){
+    var b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'it'
+    var txt = document.createElement('span'); txt.className = 'txt'
+    var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = label
+    txt.appendChild(nm)
+    if (sub) { var p = document.createElement('span'); p.className = 'pt'; p.textContent = sub; txt.appendChild(p) }
+    b.appendChild(txt)
+    if (tag) { var t = document.createElement('span'); t.className = 'tag'; t.textContent = tag; b.appendChild(t) }
+    b.addEventListener('click', function(){ closeWsPicker(); newSession(path) })
+    return b
+  }
+  rows.forEach(function(w){
+    list.appendChild(mkItem(w.name || w.path, w.path, w.why === 'pinned' ? '常用' : '最近', w.path))
+  })
+  list.appendChild(mkItem('默认工作区', '不指定 —— 交给宿主决定', '', ''))
+  el.classList.add('on')
+}
+
+/** 新建会话并立刻切过去。path 为空 = 不指定工作区（用宿主的默认值）。 */
+async function newSession(path){
   if (S.running) { setSub('当前有任务在跑，先停下再新建'); return }
   setSub('正在新建…')
   try {
-    var r = await post('/taskwatch/chat/create', {})
+    var r = await post('/taskwatch/chat/create', path ? { workspace: path } : {})
     if (!r || !r.sessionId) { setSub('新建失败：' + ((r && r.error) || '宿主没返回 sessionId')); return }
     var list = await fetch('/taskwatch/chat/sessions', { cache:'no-store' }).then(function(x){ return x.json() })
     S.sessions = (list && list.sessions) || []
     selectSession(r.sessionId)
-    setSub('')
+    setSub(r.workspace ? ('已开在 ' + r.workspace) : '')
   } catch (e) { setSub('新建失败：' + e.message) }
 }
 

@@ -522,6 +522,33 @@ html,body{overflow-x:clip}
 #lb .x{position:absolute;top:calc(8px + env(safe-area-inset-top));right:10px;width:44px;height:44px;
   border-radius:50%;border:1px solid rgba(255,255,255,.34);background:rgba(255,255,255,.12);
   color:#fff;font-size:18px;line-height:1}
+/* 工作区选择：新建对话前先定在哪个目录开。
+   清单只有服务端能给（见 host 侧注释）—— 这层 UI 只负责"挑"，不负责"拼路径"。
+   每项 52px 高，图省事把常用的放前面；路径靠右对齐截断成 …\项目名，因为 Windows
+   路径的有用信息在尾巴上。 */
+#wsp{position:fixed;inset:0;z-index:70;display:none;align-items:flex-end;
+  background:rgba(8,10,14,.42)}
+#wsp.on{display:flex}
+#wsp .box{width:100%;max-height:78vh;overflow-y:auto;background:var(--panel);
+  border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+  padding:8px 12px calc(16px + var(--safe-b));
+  transform:translateY(16px);opacity:0;
+  transition:transform var(--mo-base) var(--mo-ease),opacity var(--mo-base) var(--mo-ease)}
+#wsp.on .box{transform:none;opacity:1}
+#wsp h4{margin:8px 6px 10px;font-size:13px;font-weight:600;color:var(--dim)}
+#wsp .it{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;margin:6px 0;
+  padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);
+  color:var(--fg);text-align:left;font:inherit;font-size:15px;cursor:pointer}
+#wsp .it:active{background:var(--panel)}
+#wsp .it .txt{flex:1;min-width:0}
+#wsp .it .nm{display:block;font-weight:600}
+#wsp .it .pt{display:block;font-size:12px;color:var(--dim);margin-top:2px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+#wsp .it .tag{flex:0 0 auto;font-size:11px;color:var(--faint);border:1px solid var(--line);
+  border-radius:999px;padding:2px 8px}
+@media (prefers-reduced-motion: reduce){
+  #wsp .box{transition:none;transform:none;opacity:1}
+}
 /* ══ 10. 纸墨微动 ──────────────────────────────────────────────────────
    这一节的规矩，写给下一个改这里的人：
 
@@ -2093,22 +2120,70 @@ $('input').addEventListener('keydown', function(e){
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!S.running) send() }
 })
 $('sessBtn').addEventListener('click', openSessions)
-$('newBtn').addEventListener('click', newSession)
+$('newBtn').addEventListener('click', openWsPicker)
 $('status').addEventListener('click', openStatus)
 
-/** 右上角「+」：新建一个会话并立刻切过去。
- *  宿主刻意不接受客户端传 cwd（手机能指定任意工作目录是另一档风险），
- *  所以这里只发一个空请求，工作目录落在部署默认值上。 */
-async function newSession(){
+function closeWsPicker(){ var el = $('wsp'); if (el) el.classList.remove('on') }
+
+/** 右上角「+」：先选工作区，再新建并切过去。
+ *
+ *  清单来自 /taskwatch/workspaces，是**服务端列出来的**：客户端能挑，但挑不了清单外的
+ *  路径（宿主侧只采纳逐字命中的那一条）。所以"手机上想开在哪儿"和"手机能碰哪些磁盘"
+ *  是两件事，后者仍然由服务端决定。
+ */
+async function openWsPicker(){
+  if (S.running) { setSub('当前有任务在跑，先停下再新建'); return }
+  var el = $('wsp')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'wsp'
+    el.innerHTML = '<div class="box" role="dialog" aria-modal="true" aria-label="选择新对话的工作区">' +
+      '<h4>新对话开在哪个工作区</h4><div class="list"></div></div>'
+    el.addEventListener('click', function(e){ if (e.target === el) closeWsPicker() })
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeWsPicker() })
+    document.body.appendChild(el)
+  }
+  var list = el.querySelector('.list')
+  list.textContent = ''
+  setSub('正在取工作区…')
+  var rows = []
+  try {
+    var r = await fetch('/taskwatch/workspaces', { cache:'no-store' }).then(function(x){ return x.json() })
+    rows = (r && r.workspaces) || []
+    setSub(rows.length ? '' : ((r && r.error) ? ('取工作区失败：' + r.error) : '没有可选工作区，只能用默认'))
+  } catch (e) { setSub('取工作区失败：' + e.message) }
+
+  var mkItem = function(label, sub, tag, path){
+    var b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'it'
+    var txt = document.createElement('span'); txt.className = 'txt'
+    var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = label
+    txt.appendChild(nm)
+    if (sub) { var p = document.createElement('span'); p.className = 'pt'; p.textContent = sub; txt.appendChild(p) }
+    b.appendChild(txt)
+    if (tag) { var t = document.createElement('span'); t.className = 'tag'; t.textContent = tag; b.appendChild(t) }
+    b.addEventListener('click', function(){ closeWsPicker(); newSession(path) })
+    return b
+  }
+  rows.forEach(function(w){
+    list.appendChild(mkItem(w.name || w.path, w.path, w.why === 'pinned' ? '常用' : '最近', w.path))
+  })
+  list.appendChild(mkItem('默认工作区', '不指定 —— 交给宿主决定', '', ''))
+  el.classList.add('on')
+}
+
+/** 新建会话并立刻切过去。path 为空 = 不指定工作区（用宿主的默认值）。 */
+async function newSession(path){
   if (S.running) { setSub('当前有任务在跑，先停下再新建'); return }
   setSub('正在新建…')
   try {
-    var r = await post('/taskwatch/chat/create', {})
+    var r = await post('/taskwatch/chat/create', path ? { workspace: path } : {})
     if (!r || !r.sessionId) { setSub('新建失败：' + ((r && r.error) || '宿主没返回 sessionId')); return }
     var list = await fetch('/taskwatch/chat/sessions', { cache:'no-store' }).then(function(x){ return x.json() })
     S.sessions = (list && list.sessions) || []
     selectSession(r.sessionId)
-    setSub('')
+    setSub(r.workspace ? ('已开在 ' + r.workspace) : '')
   } catch (e) { setSub('新建失败：' + e.message) }
 }
 
@@ -2372,7 +2447,7 @@ window.fetch = function (u, o) {
   mark()   /* 第一轮只记基线（firstPass 为真时不放动画），但会把未加载的图标记成 .loading */
 })()
 
-var DEMO={"generatedAt":1791535599090,"offline":false,"errors":[],"totals":{"sessions":4,"running":2,"jobs":5,"jobsRunning":3,"subagents":2,"workflows":1,"pending":1},"pending":[{"title":"等待确认：删除 3 个过期缓存目录","detail":"即将对 build/cache 下的过期产物执行清理，需要你先确认。","kind":"approval/request","session":"session-demo-a","at":1791535554090}],"sessions":[{"id":"session-demo-a","title":"重构支付模块的重试逻辑","running":true,"activeJobs":2,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/payments","updatedAt":1791535596090,"goal":{"phase":"active","roundsStarted":7,"maxGoalRounds":50,"activation":"armed","objective":"把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。"}},{"id":"session-demo-b","title":"整理季度报表导出","running":true,"activeJobs":1,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/reports","updatedAt":1791535581090,"goal":{"phase":"active","roundsStarted":3,"maxGoalRounds":20,"activation":"armed","objective":"导出去年四个季度的报表并核对口径。"}},{"id":"session-demo-c","title":"排查登录态失效问题","running":false,"activeJobs":0,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/web","updatedAt":1791533199090,"goal":null},{"id":"session-demo-d","title":"更新部署文档","running":false,"activeJobs":0,"live":false,"origin":"subagent","depth":1,"preset":"cordis","cwd":"~/projects/docs","updatedAt":1791526999090,"goal":null}],"jobs":[{"id":"job-1","label":"pnpm test --filter payments","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791535289090,"finishedAt":0},{"id":"job-2","label":"node scripts/build.mjs","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791535504090,"finishedAt":0},{"id":"job-3","label":"node scripts/export-report.mjs --quarter Q3","kind":"pwsh","status":"running","owner":"session-demo-b","startedAt":1791534879090,"finishedAt":0},{"id":"job-4","label":"git log --oneline -50","kind":"pwsh","status":"done","owner":"session-demo-c","startedAt":1791532599090,"finishedAt":1791532601090},{"id":"job-5","label":"node scripts/make-icons.mjs","kind":"pwsh","status":"failed","owner":"session-demo-b","startedAt":1791530399090,"finishedAt":1791530404090}],"subagents":[{"id":"agent-demo-1","label":"核对接口字段","mode":"subagent","activity":"running","depth":1,"parent":"session-demo-a"},{"id":"agent-demo-2","label":"翻译发布说明","mode":"subagent","activity":"idle","depth":1,"parent":"session-demo-b"}],"workflows":[{"id":"wf-demo-1","name":"回归测试与发布检查","phase":"verify","logs":42,"startedAt":1791533799090}]};
+var DEMO={"generatedAt":1791536139070,"offline":false,"errors":[],"totals":{"sessions":4,"running":2,"jobs":5,"jobsRunning":3,"subagents":2,"workflows":1,"pending":1},"pending":[{"title":"等待确认：删除 3 个过期缓存目录","detail":"即将对 build/cache 下的过期产物执行清理，需要你先确认。","kind":"approval/request","session":"session-demo-a","at":1791536094070}],"sessions":[{"id":"session-demo-a","title":"重构支付模块的重试逻辑","running":true,"activeJobs":2,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/payments","updatedAt":1791536136070,"goal":{"phase":"active","roundsStarted":7,"maxGoalRounds":50,"activation":"armed","objective":"把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。"}},{"id":"session-demo-b","title":"整理季度报表导出","running":true,"activeJobs":1,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/reports","updatedAt":1791536121070,"goal":{"phase":"active","roundsStarted":3,"maxGoalRounds":20,"activation":"armed","objective":"导出去年四个季度的报表并核对口径。"}},{"id":"session-demo-c","title":"排查登录态失效问题","running":false,"activeJobs":0,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/web","updatedAt":1791533739070,"goal":null},{"id":"session-demo-d","title":"更新部署文档","running":false,"activeJobs":0,"live":false,"origin":"subagent","depth":1,"preset":"cordis","cwd":"~/projects/docs","updatedAt":1791527539070,"goal":null}],"jobs":[{"id":"job-1","label":"pnpm test --filter payments","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791535829070,"finishedAt":0},{"id":"job-2","label":"node scripts/build.mjs","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791536044070,"finishedAt":0},{"id":"job-3","label":"node scripts/export-report.mjs --quarter Q3","kind":"pwsh","status":"running","owner":"session-demo-b","startedAt":1791535419070,"finishedAt":0},{"id":"job-4","label":"git log --oneline -50","kind":"pwsh","status":"done","owner":"session-demo-c","startedAt":1791533139070,"finishedAt":1791533141070},{"id":"job-5","label":"node scripts/make-icons.mjs","kind":"pwsh","status":"failed","owner":"session-demo-b","startedAt":1791530939070,"finishedAt":1791530944070}],"subagents":[{"id":"agent-demo-1","label":"核对接口字段","mode":"subagent","activity":"running","depth":1,"parent":"session-demo-a"},{"id":"agent-demo-2","label":"翻译发布说明","mode":"subagent","activity":"idle","depth":1,"parent":"session-demo-b"}],"workflows":[{"id":"wf-demo-1","name":"回归测试与发布检查","phase":"verify","logs":42,"startedAt":1791534339070}]};
 var DEMO_ITEMS=[{"kind":"user","text":"把回调的重试从固定间隔改成指数退避，先只动这一处。"},{"kind":"assistant","text":"已定位到入口。当前是**固定 5 秒**、最多 3 次，退避逻辑抽在 `retryPolicy` 里。"},{"kind":"tool","callId":"t1","name":"grep","hint":"retryPolicy","status":"ok"},{"kind":"tool","callId":"t2","name":"read","hint":"src/payments/callback.ts","status":"ok"},{"kind":"tool","callId":"t3","name":"edit","hint":"src/payments/retry.ts","status":"ok"},{"kind":"tool","callId":"t4","name":"pwsh","hint":"pnpm test --filter payments","status":"no"},{"kind":"assistant","text":"## 改动\n\n- 基础 2 秒，上限 60 秒\n- 保留最后一次失败的原始异常\n\n```ts\nconst delay = Math.min(60000, 2000 * 2 ** attempt)\n```\n\n单测 12/12 通过，幂等键的重复投递用例也补上了。"},{"kind":"assistant","text":"顺手画了一张退避曲线，直接在对话里看：\n\n![退避曲线](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI3MjAiIGhlaWdodD0iMzQwIiB2aWV3Qm94PSIwIDAgNzIwIDM0MCI+CjxyZWN0IHdpZHRoPSI3MjAiIGhlaWdodD0iMzQwIiByeD0iMTYiIGZpbGw9IiNlNmVhZjAiLz4KPHRleHQgeD0iMjgiIHk9IjQ2IiBmb250LWZhbWlseT0ic3lzdGVtLXVpLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTkiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMyZDMxMzkiPumHjeivlemXtOmalO+8muWbuuWumiA1cyDihpIg5oyH5pWw6YCA6YG/PC90ZXh0Pgo8dGV4dCB4PSIyOCIgeT0iNzQiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzViNjI3MCI+5ryU56S65pWw5o2uIMK3IOmdnuecn+WunuWbvuihqDwvdGV4dD4KPGcgZmlsbD0iIzJkMzEzOSI+CjxyZWN0IHg9IjYwIiB5PSIyMjAiIHdpZHRoPSI1OCIgaGVpZ2h0PSI3MCIgcng9IjYiLz4KPHJlY3QgeD0iMTUwIiB5PSIxODAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxMTAiIHJ4PSI2IiBvcGFjaXR5PSIuODIiLz4KPHJlY3QgeD0iMjQwIiB5PSIxNDAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxNTAiIHJ4PSI2IiBvcGFjaXR5PSIuNjYiLz4KPHJlY3QgeD0iMzMwIiB5PSIxMTAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxODAiIHJ4PSI2IiBvcGFjaXR5PSIuNSIvPgo8cmVjdCB4PSI0MjAiIHk9Ijk2IiB3aWR0aD0iNTgiIGhlaWdodD0iMTk0IiByeD0iNiIgb3BhY2l0eT0iLjM0Ii8+CjwvZz4KPGcgZmlsbD0iIzViNjI3MCIgZm9udC1mYW1pbHk9InN5c3RlbS11aSxzYW5zLXNlcmlmIiBmb250LXNpemU9IjEzIj4KPHRleHQgeD0iNjYiIHk9IjMxMiI+MnM8L3RleHQ+PHRleHQgeD0iMTU2IiB5PSIzMTIiPjRzPC90ZXh0Pjx0ZXh0IHg9IjI0NiIgeT0iMzEyIj44czwvdGV4dD4KPHRleHQgeD0iMzM2IiB5PSIzMTIiPjE2czwvdGV4dD48dGV4dCB4PSI0MjYiIHk9IjMxMiI+MzJzPC90ZXh0Pgo8L2c+Cjwvc3ZnPg==)\n\n说明也导出了：\n\n[改造说明.pdf](~/dsh/outbox/demo-report.pdf)"},{"kind":"assistant","text":"还差一件事：缓存目录的清理要你确认后才执行。"}];
 // 演示页：不轮询、不联网、任何会话都能点开看同一份示例对话。
 // tick / ensureSession / startPolling / openStream 都是函数声明（会提升），覆盖安全。

@@ -441,6 +441,18 @@ check('正文排版尺度（行高 / 段间 / 标题间距 / 列表间距 / 中�
     (page.match(/line-break:strict/g) || []).length >= 4 &&
     /\.md-bq\{/.test(page) && /\.md-hr\{/.test(page) &&
     /className = 'md-bq'/.test(page) && /className = 'md-hr'/.test(page))
+// 工作区选择：能做，但只能做服务端允许的那部分。这两条断言钉的是那个边界本身 ——
+// 清单由服务端给、create 只采纳清单内路径、页面不自己拼路径。
+check('工作区清单由服务端给，create 只采纳清单内路径',
+  /path: '\/taskwatch\/workspaces'/.test(hostSrc) &&
+    /DSH_TASKWATCH_WORKSPACES/.test(hostSrc) &&
+    /这个工作区不在服务端的候选清单里/.test(hostSrc) &&
+    /request\.cwd = hit\.path/.test(hostSrc) &&
+    /statSync\(raw\)\.isDirectory\(\)/.test(hostSrc))
+check('手机页从服务端取工作区清单，不自己拼路径',
+  /fetch\('\/taskwatch\/workspaces'/.test(page) &&
+    /chat\/create', path \? \{ workspace: path \} : \{\}/.test(page) &&
+    /el\.id = 'wsp'/.test(page) && /#wsp\{/.test(page))
 
 // 结构图标必须是矢量 SVG，不能是 emoji 或 ☰ ➤ ✕ ✓ 这类字符：
 // 字符图标在不同字体下大小、基线、粗细都不一样，换台设备就变形。
