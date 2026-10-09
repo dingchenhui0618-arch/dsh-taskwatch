@@ -61,9 +61,15 @@ ok('withinRoot 拒绝根本身之外的平级路径', !withinRoot(outside, rootA
 ok('defaultRoots 默认两条（附件库 + 交付 outbox）', defaultRoots('C:\\Users\\x').length === 2)
 
 // 2. 环境变量覆盖：`;` 分隔 + `~` 展开。
-const fromEnv = rootsFrom('~/a;D:\\b', 'C:\\Users\\x')
-ok('rootsFrom 按 ; 拆分并展开 ~', fromEnv.length === 2 && fromEnv[0] === join('C:\\Users\\x', 'a'), fromEnv)
-ok('rootsFrom 空值时回落默认', rootsFrom('  ', 'C:\\Users\\x').length === 2)
+//    用例**必须**用当前平台上真正绝对的路径来构造。硬编码的 'C:\Users\x' 在 POSIX 上
+//    不是绝对路径，`resolve` 会把它拼到 cwd 后面 —— 本地（Windows）全绿、CI（ubuntu）红。
+//    v1.3.0 第一次发布就是这么挂的，而且挂的是这条测试自己，不是产品代码。
+const fakeHome = join(tmpdir(), 'tw-home')
+const otherRoot = join(tmpdir(), 'tw-b')
+const fromEnv = rootsFrom('~/a;' + otherRoot, fakeHome)
+ok('rootsFrom 按 ; 拆分并展开 ~',
+  fromEnv.length === 2 && fromEnv[0] === join(fakeHome, 'a') && fromEnv[1] === otherRoot, fromEnv)
+ok('rootsFrom 空值时回落默认', rootsFrom('  ', fakeHome).length === 2)
 
 // 3. 扩展名白名单：可执行的同源内容必须被拒，且不降级成下载。
 ok('.png → image/png', mimeFor('a.png').mime === 'image/png')
