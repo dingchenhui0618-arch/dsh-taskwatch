@@ -149,12 +149,23 @@ const READONLY_ROUTES = new Set([
   '/taskwatch/session',
   '/taskwatch/manifest.webmanifest',
   '/taskwatch/sw.js',
+  // 2026-10-09：交付文件只读出口（图片 / PDF / 文本 / 视频）。只有 GET/HEAD 语义、
+  // 不接受请求体、不列目录；「能不能读」由 lib/files.js 的白名单裁决。所以它属于
+  // 只读集合，而不是被当成"又随手加了一条路由"。
+  '/taskwatch/file',
 ])
 const declaredPaths = [...hostSrc.matchAll(/path:\s*'(\/taskwatch[^']*)'/g)].map((m) => m[1])
 const chatPaths = declaredPaths.filter((p) => !READONLY_ROUTES.has(p))
 check('新增路由全部落在 /taskwatch/chat/ 之下（写能力只从这一组来）',
   chatPaths.length > 0 && chatPaths.every((p) => p.startsWith('/taskwatch/chat/')),
   chatPaths.join(' ') || '(没有)')
+// 交付文件出口必须真的走白名单解析。这类功能最容易退化成"任意文件读取"的写法是
+// readFileSync(用户传来的路径)，所以这里正面钉住它经过 files.js，而不是断言"没这么写"。
+check('交付文件路由走 lib/files.js 的白名单解析',
+  declaredPaths.includes('/taskwatch/file') &&
+    hostSrc.includes('resolveTarget(') &&
+    hostSrc.includes('rootsFrom(') &&
+    hostSrc.includes('infoOf('))
 // 2026-10-09：从 9 增到 10 —— 新增 /taskwatch/chat/usage（只读），
 // 手机端指标行靠它拿「轮次 / 步数 / token / 缓存命中 / 上下文占用」。
 // 这个数字故意钉死：以后再加路由，必须回到这一行确认一次是有意为之。

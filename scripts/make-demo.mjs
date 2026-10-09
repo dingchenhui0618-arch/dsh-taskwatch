@@ -130,12 +130,38 @@ function demoData(now) {
 }
 
 /**
+ * 演示图表的 data URI。
+ *
+ * 为什么内嵌而不是放一张 png：演示页要能在 file:// 下直接打开、**不发任何网络请求**，
+ * 所以图必须是自包含的。用 SVG 而不是位图还有一个理由 —— 源文件里读得出来画的是什么，
+ * 换配色不用去开编辑器。
+ */
+const DEMO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="340" viewBox="0 0 720 340">
+<rect width="720" height="340" rx="16" fill="#e6eaf0"/>
+<text x="28" y="46" font-family="system-ui,sans-serif" font-size="19" font-weight="600" fill="#2d3139">重试间隔：固定 5s → 指数退避</text>
+<text x="28" y="74" font-family="system-ui,sans-serif" font-size="14" fill="#5b6270">演示数据 · 非真实图表</text>
+<g fill="#2d3139">
+<rect x="60" y="220" width="58" height="70" rx="6"/>
+<rect x="150" y="180" width="58" height="110" rx="6" opacity=".82"/>
+<rect x="240" y="140" width="58" height="150" rx="6" opacity=".66"/>
+<rect x="330" y="110" width="58" height="180" rx="6" opacity=".5"/>
+<rect x="420" y="96" width="58" height="194" rx="6" opacity=".34"/>
+</g>
+<g fill="#5b6270" font-family="system-ui,sans-serif" font-size="13">
+<text x="66" y="312">2s</text><text x="156" y="312">4s</text><text x="246" y="312">8s</text>
+<text x="336" y="312">16s</text><text x="426" y="312">32s</text>
+</g>
+</svg>`
+const DEMO_CHART = 'data:image/svg+xml;base64,' + Buffer.from(DEMO_SVG, 'utf8').toString('base64')
+
+/**
  * 演示对话。形状是页面内部的**归一化后**条目（见 page.html 的 normUser /
  * normAssistant / toolItem），不是宿主事件原文 —— 这样演示页不需要模拟事件流。
  *
- * 有意安排了两件事，好让截图能体现这一版的新能力：
+ * 有意安排了三件事，好让截图能体现当前版本的能力：
  *   · 连续 4 次工具调用 → 折叠成一行「4 个步骤」（其中 1 项失败，失败永不隐藏）
  *   · 一段带标题 / 列表 / 行内代码 / 代码块的回复 → 轻量 markdown 渲染
+ *   · 一条带图与 PDF 的回复 → 图直接铺在对话里、PDF 给可点卡片（v1.3.0 新增）
  */
 function demoItems(now) {
   const S = (sec) => now - sec * 1000
@@ -151,6 +177,12 @@ function demoItems(now) {
     {
       kind: 'assistant',
       text: '## 改动\n\n- 基础 2 秒，上限 60 秒\n- 保留最后一次失败的原始异常\n\n```ts\nconst delay = Math.min(60000, 2000 * 2 ** attempt)\n```\n\n单测 12/12 通过，幂等键的重复投递用例也补上了。',
+    },
+    {
+      kind: 'assistant',
+      // 图走 data URI（自包含、零请求）；PDF 走 /taskwatch/file —— 演示页的 fetch
+      // 打桩会给它回假元数据，所以卡片上能看到大小，但不会真的联网。
+      text: '顺手画了一张退避曲线，直接在对话里看：\n\n![退避曲线](' + DEMO_CHART + ')\n\n说明也导出了：\n\n[改造说明.pdf](~/dsh/outbox/demo-report.pdf)',
     },
     { kind: 'assistant', text: '还差一件事：缓存目录的清理要你确认后才执行。' },
   ]
@@ -178,6 +210,9 @@ function demoBoot(now) {
     // 指标行（轮次/步数/token/缓存命中/上下文）也要有假数据 —— 否则演示页
     // 和 README 截图里根本看不到这一块新 UI。数字是编的，且明确属于演示。
     "  if(p==='/taskwatch/chat/usage')return reply({live:true,turns:41,steps:1287,toolCalls:1402,totalTokens:214570,surfaceTokens:118904,inputTokens:912,cacheReadTokens:213658,cacheWriteTokens:0,reasoningTokens:0,provider:'demo',model:'deepseek-flash',contextWindow:262144});",
+    // 交付文件的元数据也打桩：这样 PDF 卡片上能看见类型与大小，而演示页
+    // 依然一次真实请求都不发（info 探测打的是这个桩）。
+    "  if(p==='/taskwatch/file')return reply({name:'改造说明.pdf',bytes:184320,mime:'application/pdf',kind:'pdf'});",
     '  return reply({});',
     '};',
     'lastData=DEMO;',

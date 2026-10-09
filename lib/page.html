@@ -475,6 +475,36 @@ html,body{overflow-x:clip}
   background:var(--panel2);border:1px solid var(--line);overflow-wrap:anywhere}
 .bub .md-p:first-child,.bub .md-h:first-child{margin-top:0}
 .bub .md-p:last-child,.bub .md-h:last-child{margin-bottom:0}
+
+/* 9. 交付文件：图片直接铺进对话，PDF 之类给一张能点的卡片。
+      手机上「看结果」主要就是看图、看文档：图铺满气泡宽度、点开能放大；
+      文档没法内嵌预览，至少把名字 / 大小 / 类型说清楚，再给一个能点开的入口。
+      点击目标都不小于 44px —— 这是手机页既定的底线。 */
+.md-imgwrap{display:block;width:100%;max-width:100%;padding:0;margin:6px 0;border:0;
+  background:none;text-align:left;border-radius:var(--dsw-radius-md);overflow:hidden}
+.md-img{display:block;width:100%;height:auto;border:1px solid var(--line);
+  border-radius:var(--dsw-radius-md);background:var(--panel2)}
+.md-imgwrap:active .md-img{opacity:.86}
+.filecard{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;margin:6px 0;
+  padding:8px 12px;border:1px solid var(--line);border-radius:var(--dsw-radius-md);
+  background:var(--panel2);color:var(--fg);text-align:left;text-decoration:none}
+.filecard:active{background:var(--panel)}
+.filecard .fi{flex:0 0 auto;width:36px;height:36px;border-radius:9px;display:flex;
+  align-items:center;justify-content:center;background:var(--panel);border:1px solid var(--line);
+  font-size:10.5px;font-weight:700;letter-spacing:.02em;color:var(--dim)}
+.filecard .fm{flex:1;min-width:0}
+.filecard .fn{display:block;font-size:14px;font-weight:600;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.filecard .fs{display:block;font-size:12px;color:var(--dim);margin-top:2px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.md-a{color:inherit;text-decoration:underline;overflow-wrap:anywhere}
+#lb{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;
+  padding:10px;background:rgba(6,8,12,.94)}
+#lb.on{display:flex}
+#lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px}
+#lb .x{position:absolute;top:calc(8px + env(safe-area-inset-top));right:10px;width:44px;height:44px;
+  border-radius:50%;border:1px solid rgba(255,255,255,.34);background:rgba(255,255,255,.12);
+  color:#fff;font-size:18px;line-height:1}
 </style>
 </head>
 <body>
@@ -839,31 +869,254 @@ var FOLD_CHARS = 620
  *  两种渲染：
  *   - 不含 ``` 围栏：整段一个文本节点。流式期间只改 textContent，代价最低。
  *   - 含围栏：拆成「文字 · 代码块 · 文字」，代码块自己会滚，不用把页面顶宽。 */
-/** 行内标记：`代码` 与 **粗体**。
+/** 行内标记：`代码`、**粗体**，以及**交付文件**（图片 / 链接 / 裸路径）。
  *
- *  安全要点：模型文本**永远不进 innerHTML**，全部走 createTextNode / textContent。
+ *  安全要点（不变）：模型文本**永远不进 innerHTML**，全部走 createTextNode / textContent。
  *  这里用一次 exec 扫描，而不是多次 split —— 多次 split 会互相破坏：先按 ** 切开、
  *  再按 ` 切，粗体里的反引号就会把标记配错，页面上冒出半截星号。
+ *
+ *  路径识别只做一件事：把「看起来是这台电脑上的文件」的文本换成同源的
+ *  /taskwatch/file 链接。**能不能读由服务端白名单裁决** —— 不在白名单里的路径，
+ *  info 探测会失败，页面原样保留那段文字，看不出任何差别。
  */
 function inlineInto(el, text){
-  var re = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g
+  var re = /(!\[[^\]\n]*\]\([^)\n]+\))|(\[[^\]\n]+\]\([^)\n]+\))|(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|((?:[A-Za-z]:[\\/]|~[\\/])[^\s<>"'`)\]]+\.(?:png|jpe?g|webp|gif|pdf|txt|md|json|csv|log|mp4|zip))/gi
   var last = 0, m
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)))
     var tok = m[0]
-    if (tok.charAt(0) === '`') {
+    if (m[1]) {
+      el.appendChild(imageFromMarkdown(tok))
+    } else if (m[2]) {
+      appendLink(el, tok)
+    } else if (m[3]) {
       var c = document.createElement('code')
       c.textContent = tok.slice(1, -1)
       el.appendChild(c)
-    } else {
+    } else if (m[4]) {
       var st = document.createElement('strong')
       st.textContent = tok.slice(2, -2)
       el.appendChild(st)
+    } else {
+      el.appendChild(probePath(tok))
     }
     last = m.index + tok.length
   }
   if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)))
   return el
+}
+
+// ── 交付文件 ────────────────────────────────────────────────────────────────
+//
+// 为什么值得做：手机上「生成了一张图」如果只表现为一个文件名，等于没看见结果；
+// PDF 这类没法内嵌预览的，至少要把名字、大小、类型讲清楚，再给一个能点开的入口。
+//
+// 为什么路径探测要缓存：一段回复里可能有十几个路径，而流式渲染每帧都会重跑
+// blocksInto —— 不缓存就是每帧十几个请求打在本机插件上。一个路径只问一次。
+var FILE_ROUTE = '/taskwatch/file'
+var PATH_CACHE = {}          // 路径 -> info 对象 / 0（已知不可读）
+
+function fmtBytes(n){
+  var b = Number(n) || 0
+  if (b < 1024) return b + ' B'
+  if (b < 1048576) return (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' KB'
+  return (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' MB'
+}
+function extOf(p){
+  var m = /\.([A-Za-z0-9]{1,6})(?=$|[?#])/.exec(String(p == null ? '' : p))
+  return m ? m[1].toLowerCase() : ''
+}
+function kindLabel(p){
+  var e = extOf(p)
+  if (e === 'jpeg') e = 'jpg'
+  return e ? e.toUpperCase() : 'FILE'
+}
+function baseName(p){
+  var s = String(p == null ? '' : p).replace(/[\\/]+$/, '')
+  var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'))
+  return i >= 0 ? s.slice(i + 1) : s
+}
+function looksLikeFile(p){ return /^[A-Za-z]:[\\/]/.test(p) || /^~[\\/]/.test(p) }
+function fileUrlFor(p){
+  return FILE_ROUTE + '?path=' + encodeURIComponent(p) + '&name=' + encodeURIComponent(baseName(p))
+}
+function targetOf(raw){
+  var s = String(raw == null ? '' : raw).trim()
+  if (!s) return null
+  if (/^data:image\//i.test(s)) return { url: s, kind: 'data' }
+  if (s.indexOf(FILE_ROUTE) === 0) return { url: s, kind: 'route' }
+  if (/^https?:\/\//i.test(s)) return { url: s, kind: 'web' }
+  if (looksLikeFile(s)) return { url: fileUrlFor(s), kind: 'file' }
+  return null
+}
+function imageFromMarkdown(tok){
+  var m = /^!\[([^\]\n]*)\]\(([^)\n]+)\)$/.exec(tok)
+  var t = m ? targetOf(m[2]) : null
+  if (!t) return document.createTextNode(tok)
+  return imgNode(t.url, (m[1] || '').trim() || baseName(m[2]))
+}
+function appendLink(el, tok){
+  var m = /^\[([^\]\n]+)\]\(([^)\n]+)\)$/.exec(tok)
+  var t = m ? targetOf(m[2]) : null
+  if (!t) { el.appendChild(document.createTextNode(tok)); return }
+  if (t.kind === 'web') {
+    var a = document.createElement('a')
+    a.className = 'md-a'
+    a.href = t.url
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    a.textContent = m[1]
+    el.appendChild(a)
+    return
+  }
+  if (t.kind === 'data') { el.appendChild(imgNode(t.url, m[1])); return }
+  el.appendChild(fileCard(t.url, m[1], kindLabel(m[2])))
+}
+/** 裸路径：先问服务端能不能读；读得到才换成图或卡片，读不到就保持纯文本。 */
+function probePath(p){
+  var holder = document.createElement('span')
+  holder.textContent = p
+  if (!looksLikeFile(p)) return holder
+  var url = fileUrlFor(p)
+  if (PATH_CACHE[p] === 0) return holder
+  if (PATH_CACHE[p]) {
+    var info = PATH_CACHE[p]
+    return info.kind === 'image' ? imgNode(url, info.name || p) : fileCard(url, info.name || p, kindLabel(p))
+  }
+  try {
+    fetch(url + '&info=1', { cache: 'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null })
+      .then(function(j){
+        if (!j || j.error) { PATH_CACHE[p] = 0; return }
+        PATH_CACHE[p] = j
+        if (!holder.parentNode) return
+        var node = j.kind === 'image' ? imgNode(url, j.name || p) : fileCard(url, j.name || p, kindLabel(p))
+        holder.parentNode.replaceChild(node, holder)
+      })
+      .catch(function(){ PATH_CACHE[p] = 0 })
+  } catch (e) { /* 忽略 */ }
+  return holder
+}
+function imgNode(url, alt){
+  var wrap = document.createElement('button')
+  wrap.type = 'button'
+  wrap.className = 'md-imgwrap'
+  wrap.setAttribute('aria-label', alt ? ('查看大图：' + alt) : '查看大图')
+  var img = document.createElement('img')
+  img.className = 'md-img'
+  img.loading = 'lazy'
+  img.decoding = 'async'
+  img.alt = alt || ''
+  img.src = url
+  img.addEventListener('error', function(){
+    if (!wrap.parentNode) return
+    wrap.parentNode.replaceChild(brokenFileNode(alt || '图片'), wrap)
+  })
+  wrap.appendChild(img)
+  wrap.addEventListener('click', function(){ openLightbox(url, alt) })
+  return wrap
+}
+function fileCard(url, label, kind){
+  var a = document.createElement('a')
+  a.className = 'filecard'
+  a.href = url
+  a.target = '_blank'
+  a.rel = 'noopener'
+  var ic = document.createElement('span')
+  ic.className = 'fi'
+  ic.textContent = kind || 'FILE'
+  var fm = document.createElement('span')
+  fm.className = 'fm'
+  var fn = document.createElement('span')
+  fn.className = 'fn'
+  fn.textContent = label || '文件'
+  var fs = document.createElement('span')
+  fs.className = 'fs'
+  fs.textContent = '点开查看'
+  fm.appendChild(fn)
+  fm.appendChild(fs)
+  a.appendChild(ic)
+  a.appendChild(fm)
+  fillInfo(fs, url)
+  return a
+}
+/** 卡片第二行先用「点开查看」，元数据回来再补上类型 / 大小 / 尺寸。 */
+function fillInfo(fs, url){
+  try {
+    fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 'info=1', { cache: 'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null })
+      .then(function(j){
+        if (!j || j.error) return
+        var bits = []
+        if (j.kind) bits.push(String(j.kind).toUpperCase())
+        if (j.bytes) bits.push(fmtBytes(j.bytes))
+        if (j.width && j.height) bits.push(j.width + '×' + j.height)
+        if (bits.length) fs.textContent = bits.join(' · ')
+      })
+      .catch(function(){ /* 拿不到就保持"点开查看" */ })
+  } catch (e) { /* 忽略 */ }
+}
+function brokenFileNode(label){
+  var d = document.createElement('div')
+  d.className = 'filecard'
+  var ic = document.createElement('span')
+  ic.className = 'fi'
+  ic.textContent = 'ERR'
+  var fm = document.createElement('span')
+  fm.className = 'fm'
+  var fn = document.createElement('span')
+  fn.className = 'fn'
+  fn.textContent = label
+  var fs = document.createElement('span')
+  fs.className = 'fs'
+  fs.textContent = '这份内容现在读不到了（可能已移走或不在白名单里）'
+  fm.appendChild(fn)
+  fm.appendChild(fs)
+  d.appendChild(ic)
+  d.appendChild(fm)
+  return d
+}
+/** 点图放大。手机上原图往往只有几百像素宽，看不清代码截图里的字。 */
+function openLightbox(url, alt){
+  var lb = document.getElementById('lb')
+  if (!lb) {
+    lb = document.createElement('div')
+    lb.id = 'lb'
+    var big = document.createElement('img')
+    big.alt = ''
+    var x = document.createElement('button')
+    x.type = 'button'
+    x.className = 'x'
+    x.setAttribute('aria-label', '关闭')
+    // 关闭图标走 SVG，不用 ✕ 字符：字符图标在不同字体下大小与基线都不一样，
+    // 换台设备就变形 —— 这个仓库的结构图标一律矢量（契约测试也会拦下来）。
+    var xg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    xg.setAttribute('viewBox', '0 0 24 24')
+    xg.setAttribute('width', '18')
+    xg.setAttribute('height', '18')
+    xg.setAttribute('fill', 'none')
+    xg.setAttribute('stroke', 'currentColor')
+    xg.setAttribute('stroke-width', '2')
+    xg.setAttribute('stroke-linecap', 'round')
+    xg.setAttribute('aria-hidden', 'true')
+    var xp = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    xp.setAttribute('d', 'M6 6l12 12M18 6L6 18')
+    xg.appendChild(xp)
+    x.appendChild(xg)
+    x.addEventListener('click', function(){
+      lb.classList.remove('on')
+      big.removeAttribute('src')
+    })
+    lb.appendChild(big)
+    lb.appendChild(x)
+    lb.addEventListener('click', function(e){ if (e.target === lb) x.click() })
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') x.click() })
+    document.body.appendChild(lb)
+  }
+  var img = lb.querySelector('img')
+  img.alt = alt || ''
+  img.src = url
+  lb.classList.add('on')
 }
 
 /** 块级标记：`## 标题`、`- 列表项`、空行留白。
