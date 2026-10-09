@@ -1,6 +1,6 @@
 {
   "name": "dsh-taskwatch",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A phone client for DeepSeek Harness: sessions, live chat and a real-time metrics row.",
   "type": "module",
   "main": "lib/index.js",
