@@ -1341,9 +1341,11 @@ function renderStats(){
     if (USAGE.turns || USAGE.steps) bits.push((USAGE.turns || 0) + ' 轮 ' + (USAGE.steps || 0) + ' 步')
     if (USAGE.totalTokens) bits.push(fmtTok(USAGE.totalTokens) + ' tok')
     var cr = Number(USAGE.cacheReadTokens) || 0, ci = Number(USAGE.inputTokens) || 0
-    if (cr > 0 && cr + ci > 0) bits.push('缓存命中 ' + Math.round(100 * cr / (cr + ci)) + '%')
+    // 向下取整，不四舍五入：99.5% 显示成 "100%" 是在往上抬，
+    // 监控页宁可少报也不能多报。DSH 自己的状态栏也是这个口径（99%）。
+    if (cr > 0 && cr + ci > 0) bits.push('缓存命中 ' + Math.floor(100 * cr / (cr + ci)) + '%')
     if (USAGE.contextWindow > 0 && USAGE.surfaceTokens > 0) {
-      bits.push('上下文 ' + Math.round(100 * USAGE.surfaceTokens / USAGE.contextWindow) + '%')
+      bits.push('上下文 ' + Math.floor(100 * USAGE.surfaceTokens / USAGE.contextWindow) + '%')
     }
   }
   el.textContent = bits.join(' · ')
