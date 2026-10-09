@@ -2219,11 +2219,15 @@ function pkClose(){
   PK.on = false; pkEl().classList.remove('on')
   clearTimeout(PK.timer); PK.timer = 0
 }
+function pkDraw(){
+  // 渲染出错不能被报成"连不上牌桌"：上次就是这么把界面 bug 伪装成网络问题的。
+  try { pkRender(PK.snap) } catch (e) { pkToast('界面出错：' + e.message) }
+}
 function pkPoll(delay){
   clearTimeout(PK.timer)
   PK.timer = setTimeout(function(){
     if (!PK.on) return
-    pkCall('').then(function(s){ PK.snap = s; PK.seen = ''; pkRender(s) })
+    pkCall('').then(function(s){ PK.snap = s; PK.seen = ''; pkDraw() })
       .catch(function(err){ pkToast('牌桌连不上：' + err.message) })
       .then(function(){ if (PK.on) pkPoll(1800) })
   }, delay || 1800)
@@ -2280,8 +2284,8 @@ function pkRender(s){
   var can = !PK.busy && !!(legal.fold || legal.check || legal.call || legal.raise)
   var waiting = !can && !s.gameOver
   $('pkFold').disabled = !legal.fold
-  $('pkCheck').disabled = !legal.check
-  $('pkCall').disabled = !legal.call
+  // 过牌与跟注共用一个按钮：任一合法就该可点（只在 check 合法时开，跟注会点不动）。
+  $('pkCheck').disabled = !(legal.check || legal.call)
   $('pkCheck').textContent = legal.check ? '过牌' : (legal.call ? ('跟注 ' + (legal.callAmount || '')) : '过牌')
   var raisable = !!legal.raise
   $('pkRaise').disabled = !raisable
@@ -2291,37 +2295,38 @@ function pkRender(s){
   if (raisable && (+r.value < lo || +r.value > hi)) r.value = Math.min(hi, Math.max(lo, Math.round((lo + hi) / 2)))
   $('pkAmt').textContent = raisable ? (r.value + '') : ''
   $('pkNext').style.display = waiting ? '' : 'none'
+  $('pkStart').style.display = (s.status === 'playing') ? 'none' : ''
   $('pkHint').textContent = PK.busy ? '提交中...' :
     (s.gameOver ? '本局结束' : (can ? (s.toAct && s.toAct.name ? ('轮到 ' + s.toAct.name) : '轮到你') : '等待其他玩家…'))
 }
 function pkAct(action){
   if (PK.busy) return
-  PK.busy = true; pkRender(PK.snap)
+  PK.busy = true; pkDraw()
   var body = { action: action }
   if (action === 'raise') body.amount = +$('pkRange').value
-  pkCall('/act', body).then(function(s){ PK.snap = s; pkRender(s) })
+  pkCall('/act', body).then(function(s){ PK.snap = s; pkDraw() })
     // 插件的加注金额字段名若是 to 而不是 amount，这里兜一次，免得手机上"加注"永远失败。
     .catch(function(err){
       if (action !== 'raise') { pkToast('操作失败：' + err.message); return null }
       var b2 = { action: 'raise', to: +$('pkRange').value }
-      return pkCall('/act', b2).then(function(s){ PK.snap = s; pkRender(s) })
+      return pkCall('/act', b2).then(function(s){ PK.snap = s; pkDraw() })
         .catch(function(e2){ pkToast('加注失败：' + e2.message) })
     })
-    .then(function(){ PK.busy = false; if (PK.snap) pkRender(PK.snap); pkPoll(400) })
+    .then(function(){ PK.busy = false; if (PK.snap) pkDraw(); pkPoll(400) })
 }
 function pkStart(){
   if (PK.busy) return
   PK.busy = true
-  pkCall('/start', {}).then(function(s){ PK.snap = s; pkRender(s) })
+  pkCall('/start', {}).then(function(s){ PK.snap = s; pkDraw() })
     .catch(function(err){ pkToast('开局失败：' + err.message) })
-    .then(function(){ PK.busy = false; if (PK.snap) pkRender(PK.snap); pkPoll(400) })
+    .then(function(){ PK.busy = false; if (PK.snap) pkDraw(); pkPoll(400) })
 }
 function pkNext(){
   if (PK.busy) return
   PK.busy = true
-  pkCall('/next-hand', {}).then(function(s){ PK.snap = s; pkRender(s) })
+  pkCall('/next-hand', {}).then(function(s){ PK.snap = s; pkDraw() })
     .catch(function(err){ pkToast('下一手失败：' + err.message) })
-    .then(function(){ PK.busy = false; if (PK.snap) pkRender(PK.snap); pkPoll(400) })
+    .then(function(){ PK.busy = false; if (PK.snap) pkDraw(); pkPoll(400) })
 }
 $('pokerBtn').addEventListener('click', pkOpen)
 $('poker').innerHTML = [
