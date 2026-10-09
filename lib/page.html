@@ -2303,7 +2303,12 @@ function pkAct(action){
   if (PK.busy) return
   PK.busy = true; pkDraw()
   var body = { action: action }
-  if (action === 'raise') body.amount = +$('pkRange').value
+  if (action === 'raise') {
+    // amount 与 to 同时给：插件对未知字段静默忽略，猜错字段名不会报错、只会没反应。
+    var v = +$('pkRange').value
+    body.amount = v
+    body.to = v
+  }
   pkCall('/act', body).then(function(s){ PK.snap = s; pkDraw() })
     // 插件的加注金额字段名若是 to 而不是 amount，这里兜一次，免得手机上"加注"永远失败。
     .catch(function(err){
