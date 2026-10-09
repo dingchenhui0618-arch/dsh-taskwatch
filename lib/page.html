@@ -376,7 +376,7 @@ footer{
 
 /* 1. 超长回复：折叠 + 底部渐隐。折叠与否按字符数预判，不等布局算完再改，
       否则会先闪一下全文再收起来。 */
-.bub.fold{max-height:22rem;overflow:hidden;
+.bub.fold{max-height:22rem;overflow:hidden;padding-bottom:20px;
   -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent);
   mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent)}
 .bub.fold.open{max-height:none;-webkit-mask-image:none;mask-image:none}
@@ -462,18 +462,30 @@ html,body{overflow-x:clip}
 .toolgroup .gb .tool{margin-top:6px}
 .toolgroup .gb[hidden]{display:none}
 
-/* 8. 轻量 markdown：标题 / 粗体 / 行内代码 / 列表 / 空行留白。
+/* 8. 轻量 markdown：标题 / 粗体 / 行内代码 / 列表 / 引用 / 分隔线 / 空行留白。
       做这个是因为模型输出里 ## 和 ** 到处都是 —— 不渲染的话，手机上看到的
       就是一堆符号，对"点进来想看懂发生了什么"的人是纯粹的噪音。
-      只认这几种，理由见 JS 里 blocksInto 的注释。 */
-.md-h{font-weight:600;font-size:15px;line-height:1.45;margin:3px 0 2px;text-wrap:balance}
-.md-h[data-lv='1']{font-size:16.5px}
-.md-h[data-lv='2']{font-size:15.5px}
-.md-li{position:relative;padding-left:14px;margin:1px 0;line-height:1.6}
-.md-li::before{content:'';position:absolute;left:3px;top:.68em;width:4px;height:4px;
+      只认这几种，理由见 JS 里 blocksInto 的注释。
+
+      ⚠ 以下尺度是按**"读起来不晕"**定的，不是按"一屏塞多少字"定的（2026-10-09 重排）：
+        · 行高 1.72 —— 中文没有西文那种字升部/降部留白，1.6 会读成一整块；
+        · 段间 16px —— 原来只有 8px，而 .md-p 自己 margin:0，几段连起来就是一堵墙；
+        · 标题上 16 / 下 7 —— 原来 3/2，标题贴在正文上，层次看不出来；
+        · 列表项 5px —— 原来 1px，多行列表挤成一片；
+        · line-break:strict —— 别在中文标点前后断行。
+      这些数字改小很容易；改小之前先想清楚为什么在这儿。 */
+.md-h{font-weight:600;font-size:15.5px;line-height:1.4;margin:16px 0 7px;
+  text-wrap:balance;line-break:strict}
+.md-h[data-lv='1']{font-size:17px}
+.md-h[data-lv='2']{font-size:16px}
+.md-li{position:relative;padding-left:17px;margin:5px 0;line-height:1.7;line-break:strict}
+.md-li::before{content:'';position:absolute;left:4px;top:.72em;width:4px;height:4px;
   border-radius:50%;background:currentColor;opacity:.5}
-.md-p{margin:0;line-height:1.6;text-wrap:pretty}
-.md-blank{height:8px}
+.md-p{margin:0 0 3px;line-height:1.72;text-wrap:pretty;line-break:strict}
+.md-blank{height:16px}
+.md-bq{margin:9px 0;padding:1px 0 1px 11px;border-left:2px solid var(--line2);
+  color:var(--dim);line-height:1.7;line-break:strict}
+.md-hr{height:1px;margin:16px 0;background:var(--line)}
 .bub strong{font-weight:600}
 .bub code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-size:.88em;padding:1px 4px;border-radius:4px;
@@ -1275,6 +1287,16 @@ function blocksInto(el, text){
     if (li) {
       var it = document.createElement('div'); it.className = 'md-li'
       el.appendChild(inlineInto(it, li[1])); continue
+    }
+    // 引用与分隔线：以前它们会原样显示成 "> 某句话" / "---"，是"密密麻麻"的一部分。
+    var bq = /^>\s?(.*)$/.exec(ln)
+    if (bq) {
+      var qt = document.createElement('div'); qt.className = 'md-bq'
+      el.appendChild(inlineInto(qt, bq[1])); continue
+    }
+    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(ln)) {
+      var hr = document.createElement('div'); hr.className = 'md-hr'
+      el.appendChild(hr); continue
     }
     var p = document.createElement('div'); p.className = 'md-p'
     el.appendChild(inlineInto(p, ln))

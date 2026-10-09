@@ -376,7 +376,7 @@ footer{
 
 /* 1. 超长回复：折叠 + 底部渐隐。折叠与否按字符数预判，不等布局算完再改，
       否则会先闪一下全文再收起来。 */
-.bub.fold{max-height:22rem;overflow:hidden;
+.bub.fold{max-height:22rem;overflow:hidden;padding-bottom:20px;
   -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent);
   mask-image:linear-gradient(180deg,#000 calc(100% - 44px),transparent)}
 .bub.fold.open{max-height:none;-webkit-mask-image:none;mask-image:none}
@@ -462,18 +462,30 @@ html,body{overflow-x:clip}
 .toolgroup .gb .tool{margin-top:6px}
 .toolgroup .gb[hidden]{display:none}
 
-/* 8. 轻量 markdown：标题 / 粗体 / 行内代码 / 列表 / 空行留白。
+/* 8. 轻量 markdown：标题 / 粗体 / 行内代码 / 列表 / 引用 / 分隔线 / 空行留白。
       做这个是因为模型输出里 ## 和 ** 到处都是 —— 不渲染的话，手机上看到的
       就是一堆符号，对"点进来想看懂发生了什么"的人是纯粹的噪音。
-      只认这几种，理由见 JS 里 blocksInto 的注释。 */
-.md-h{font-weight:600;font-size:15px;line-height:1.45;margin:3px 0 2px;text-wrap:balance}
-.md-h[data-lv='1']{font-size:16.5px}
-.md-h[data-lv='2']{font-size:15.5px}
-.md-li{position:relative;padding-left:14px;margin:1px 0;line-height:1.6}
-.md-li::before{content:'';position:absolute;left:3px;top:.68em;width:4px;height:4px;
+      只认这几种，理由见 JS 里 blocksInto 的注释。
+
+      ⚠ 以下尺度是按**"读起来不晕"**定的，不是按"一屏塞多少字"定的（2026-10-09 重排）：
+        · 行高 1.72 —— 中文没有西文那种字升部/降部留白，1.6 会读成一整块；
+        · 段间 16px —— 原来只有 8px，而 .md-p 自己 margin:0，几段连起来就是一堵墙；
+        · 标题上 16 / 下 7 —— 原来 3/2，标题贴在正文上，层次看不出来；
+        · 列表项 5px —— 原来 1px，多行列表挤成一片；
+        · line-break:strict —— 别在中文标点前后断行。
+      这些数字改小很容易；改小之前先想清楚为什么在这儿。 */
+.md-h{font-weight:600;font-size:15.5px;line-height:1.4;margin:16px 0 7px;
+  text-wrap:balance;line-break:strict}
+.md-h[data-lv='1']{font-size:17px}
+.md-h[data-lv='2']{font-size:16px}
+.md-li{position:relative;padding-left:17px;margin:5px 0;line-height:1.7;line-break:strict}
+.md-li::before{content:'';position:absolute;left:4px;top:.72em;width:4px;height:4px;
   border-radius:50%;background:currentColor;opacity:.5}
-.md-p{margin:0;line-height:1.6;text-wrap:pretty}
-.md-blank{height:8px}
+.md-p{margin:0 0 3px;line-height:1.72;text-wrap:pretty;line-break:strict}
+.md-blank{height:16px}
+.md-bq{margin:9px 0;padding:1px 0 1px 11px;border-left:2px solid var(--line2);
+  color:var(--dim);line-height:1.7;line-break:strict}
+.md-hr{height:1px;margin:16px 0;background:var(--line)}
 .bub strong{font-weight:600}
 .bub code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-size:.88em;padding:1px 4px;border-radius:4px;
@@ -1275,6 +1287,16 @@ function blocksInto(el, text){
     if (li) {
       var it = document.createElement('div'); it.className = 'md-li'
       el.appendChild(inlineInto(it, li[1])); continue
+    }
+    // 引用与分隔线：以前它们会原样显示成 "> 某句话" / "---"，是"密密麻麻"的一部分。
+    var bq = /^>\s?(.*)$/.exec(ln)
+    if (bq) {
+      var qt = document.createElement('div'); qt.className = 'md-bq'
+      el.appendChild(inlineInto(qt, bq[1])); continue
+    }
+    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(ln)) {
+      var hr = document.createElement('div'); hr.className = 'md-hr'
+      el.appendChild(hr); continue
     }
     var p = document.createElement('div'); p.className = 'md-p'
     el.appendChild(inlineInto(p, ln))
@@ -2350,7 +2372,7 @@ window.fetch = function (u, o) {
   mark()   /* 第一轮只记基线（firstPass 为真时不放动画），但会把未加载的图标记成 .loading */
 })()
 
-var DEMO={"generatedAt":1791534202864,"offline":false,"errors":[],"totals":{"sessions":4,"running":2,"jobs":5,"jobsRunning":3,"subagents":2,"workflows":1,"pending":1},"pending":[{"title":"等待确认：删除 3 个过期缓存目录","detail":"即将对 build/cache 下的过期产物执行清理，需要你先确认。","kind":"approval/request","session":"session-demo-a","at":1791534157864}],"sessions":[{"id":"session-demo-a","title":"重构支付模块的重试逻辑","running":true,"activeJobs":2,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/payments","updatedAt":1791534199864,"goal":{"phase":"active","roundsStarted":7,"maxGoalRounds":50,"activation":"armed","objective":"把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。"}},{"id":"session-demo-b","title":"整理季度报表导出","running":true,"activeJobs":1,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/reports","updatedAt":1791534184864,"goal":{"phase":"active","roundsStarted":3,"maxGoalRounds":20,"activation":"armed","objective":"导出去年四个季度的报表并核对口径。"}},{"id":"session-demo-c","title":"排查登录态失效问题","running":false,"activeJobs":0,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/web","updatedAt":1791531802864,"goal":null},{"id":"session-demo-d","title":"更新部署文档","running":false,"activeJobs":0,"live":false,"origin":"subagent","depth":1,"preset":"cordis","cwd":"~/projects/docs","updatedAt":1791525602864,"goal":null}],"jobs":[{"id":"job-1","label":"pnpm test --filter payments","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791533892864,"finishedAt":0},{"id":"job-2","label":"node scripts/build.mjs","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791534107864,"finishedAt":0},{"id":"job-3","label":"node scripts/export-report.mjs --quarter Q3","kind":"pwsh","status":"running","owner":"session-demo-b","startedAt":1791533482864,"finishedAt":0},{"id":"job-4","label":"git log --oneline -50","kind":"pwsh","status":"done","owner":"session-demo-c","startedAt":1791531202864,"finishedAt":1791531204864},{"id":"job-5","label":"node scripts/make-icons.mjs","kind":"pwsh","status":"failed","owner":"session-demo-b","startedAt":1791529002864,"finishedAt":1791529007864}],"subagents":[{"id":"agent-demo-1","label":"核对接口字段","mode":"subagent","activity":"running","depth":1,"parent":"session-demo-a"},{"id":"agent-demo-2","label":"翻译发布说明","mode":"subagent","activity":"idle","depth":1,"parent":"session-demo-b"}],"workflows":[{"id":"wf-demo-1","name":"回归测试与发布检查","phase":"verify","logs":42,"startedAt":1791532402864}]};
+var DEMO={"generatedAt":1791535599090,"offline":false,"errors":[],"totals":{"sessions":4,"running":2,"jobs":5,"jobsRunning":3,"subagents":2,"workflows":1,"pending":1},"pending":[{"title":"等待确认：删除 3 个过期缓存目录","detail":"即将对 build/cache 下的过期产物执行清理，需要你先确认。","kind":"approval/request","session":"session-demo-a","at":1791535554090}],"sessions":[{"id":"session-demo-a","title":"重构支付模块的重试逻辑","running":true,"activeJobs":2,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/payments","updatedAt":1791535596090,"goal":{"phase":"active","roundsStarted":7,"maxGoalRounds":50,"activation":"armed","objective":"把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。"}},{"id":"session-demo-b","title":"整理季度报表导出","running":true,"activeJobs":1,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/reports","updatedAt":1791535581090,"goal":{"phase":"active","roundsStarted":3,"maxGoalRounds":20,"activation":"armed","objective":"导出去年四个季度的报表并核对口径。"}},{"id":"session-demo-c","title":"排查登录态失效问题","running":false,"activeJobs":0,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/web","updatedAt":1791533199090,"goal":null},{"id":"session-demo-d","title":"更新部署文档","running":false,"activeJobs":0,"live":false,"origin":"subagent","depth":1,"preset":"cordis","cwd":"~/projects/docs","updatedAt":1791526999090,"goal":null}],"jobs":[{"id":"job-1","label":"pnpm test --filter payments","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791535289090,"finishedAt":0},{"id":"job-2","label":"node scripts/build.mjs","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791535504090,"finishedAt":0},{"id":"job-3","label":"node scripts/export-report.mjs --quarter Q3","kind":"pwsh","status":"running","owner":"session-demo-b","startedAt":1791534879090,"finishedAt":0},{"id":"job-4","label":"git log --oneline -50","kind":"pwsh","status":"done","owner":"session-demo-c","startedAt":1791532599090,"finishedAt":1791532601090},{"id":"job-5","label":"node scripts/make-icons.mjs","kind":"pwsh","status":"failed","owner":"session-demo-b","startedAt":1791530399090,"finishedAt":1791530404090}],"subagents":[{"id":"agent-demo-1","label":"核对接口字段","mode":"subagent","activity":"running","depth":1,"parent":"session-demo-a"},{"id":"agent-demo-2","label":"翻译发布说明","mode":"subagent","activity":"idle","depth":1,"parent":"session-demo-b"}],"workflows":[{"id":"wf-demo-1","name":"回归测试与发布检查","phase":"verify","logs":42,"startedAt":1791533799090}]};
 var DEMO_ITEMS=[{"kind":"user","text":"把回调的重试从固定间隔改成指数退避，先只动这一处。"},{"kind":"assistant","text":"已定位到入口。当前是**固定 5 秒**、最多 3 次，退避逻辑抽在 `retryPolicy` 里。"},{"kind":"tool","callId":"t1","name":"grep","hint":"retryPolicy","status":"ok"},{"kind":"tool","callId":"t2","name":"read","hint":"src/payments/callback.ts","status":"ok"},{"kind":"tool","callId":"t3","name":"edit","hint":"src/payments/retry.ts","status":"ok"},{"kind":"tool","callId":"t4","name":"pwsh","hint":"pnpm test --filter payments","status":"no"},{"kind":"assistant","text":"## 改动\n\n- 基础 2 秒，上限 60 秒\n- 保留最后一次失败的原始异常\n\n```ts\nconst delay = Math.min(60000, 2000 * 2 ** attempt)\n```\n\n单测 12/12 通过，幂等键的重复投递用例也补上了。"},{"kind":"assistant","text":"顺手画了一张退避曲线，直接在对话里看：\n\n![退避曲线](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI3MjAiIGhlaWdodD0iMzQwIiB2aWV3Qm94PSIwIDAgNzIwIDM0MCI+CjxyZWN0IHdpZHRoPSI3MjAiIGhlaWdodD0iMzQwIiByeD0iMTYiIGZpbGw9IiNlNmVhZjAiLz4KPHRleHQgeD0iMjgiIHk9IjQ2IiBmb250LWZhbWlseT0ic3lzdGVtLXVpLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTkiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMyZDMxMzkiPumHjeivlemXtOmalO+8muWbuuWumiA1cyDihpIg5oyH5pWw6YCA6YG/PC90ZXh0Pgo8dGV4dCB4PSIyOCIgeT0iNzQiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzViNjI3MCI+5ryU56S65pWw5o2uIMK3IOmdnuecn+WunuWbvuihqDwvdGV4dD4KPGcgZmlsbD0iIzJkMzEzOSI+CjxyZWN0IHg9IjYwIiB5PSIyMjAiIHdpZHRoPSI1OCIgaGVpZ2h0PSI3MCIgcng9IjYiLz4KPHJlY3QgeD0iMTUwIiB5PSIxODAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxMTAiIHJ4PSI2IiBvcGFjaXR5PSIuODIiLz4KPHJlY3QgeD0iMjQwIiB5PSIxNDAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxNTAiIHJ4PSI2IiBvcGFjaXR5PSIuNjYiLz4KPHJlY3QgeD0iMzMwIiB5PSIxMTAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxODAiIHJ4PSI2IiBvcGFjaXR5PSIuNSIvPgo8cmVjdCB4PSI0MjAiIHk9Ijk2IiB3aWR0aD0iNTgiIGhlaWdodD0iMTk0IiByeD0iNiIgb3BhY2l0eT0iLjM0Ii8+CjwvZz4KPGcgZmlsbD0iIzViNjI3MCIgZm9udC1mYW1pbHk9InN5c3RlbS11aSxzYW5zLXNlcmlmIiBmb250LXNpemU9IjEzIj4KPHRleHQgeD0iNjYiIHk9IjMxMiI+MnM8L3RleHQ+PHRleHQgeD0iMTU2IiB5PSIzMTIiPjRzPC90ZXh0Pjx0ZXh0IHg9IjI0NiIgeT0iMzEyIj44czwvdGV4dD4KPHRleHQgeD0iMzM2IiB5PSIzMTIiPjE2czwvdGV4dD48dGV4dCB4PSI0MjYiIHk9IjMxMiI+MzJzPC90ZXh0Pgo8L2c+Cjwvc3ZnPg==)\n\n说明也导出了：\n\n[改造说明.pdf](~/dsh/outbox/demo-report.pdf)"},{"kind":"assistant","text":"还差一件事：缓存目录的清理要你确认后才执行。"}];
 // 演示页：不轮询、不联网、任何会话都能点开看同一份示例对话。
 // tick / ensureSession / startPolling / openStream 都是函数声明（会提升），覆盖安全。
