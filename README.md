@@ -83,7 +83,7 @@ DSH 的 Web GUI 没有内置鉴权，而默认 preset 往往是 `danger-full-acc
 | `/taskwatch/session?id=&limit=` | JSON | 单个会话的最近对话（`limit` 上限 60，默认 20） |
 | `/taskwatch/file?id=` · `?path=` · `?info=1` | 二进制 / JSON | 交付文件：附件走 `id`，绝对路径走白名单根（图片 / PDF / 文本 / 视频）；`info=1` 只回元数据 |
 | `/taskwatch/chat/sessions` | JSON | 可对话的会话列表（**不含子代理会话**） |
-| `/taskwatch/workspaces` | JSON | 新建对话可选的工作区（现有会话的 `cwd` + 固定候选 + 环境变量追加；只列真实存在的目录） |
+| `/taskwatch/chat/workspaces` | JSON | 新建对话可选的工作区（现有会话的 `cwd` + 固定候选 + 环境变量追加；只列真实存在的目录） |
 | `/taskwatch/chat/models` | JSON | 可选模型目录 |
 | `/taskwatch/chat/titles?ids=` | JSON | 批量补会话标题（最多 20 个，宿主缓存 10 分钟） |
 | `/taskwatch/chat/page?...` | JSON | 往更早翻会话历史 |
@@ -98,7 +98,7 @@ DSH 的 Web GUI 没有内置鉴权，而默认 preset 往往是 `danger-full-acc
 |---|---|---|
 | `/taskwatch/chat/send` | `{sessionId,text,mode?,timeZone?}` | 给会话发一条消息 |
 | `/taskwatch/chat/cancel` | `{sessionId}` | 停止当前这一轮 |
-| `/taskwatch/chat/create` | `{}` 或 `{workspace}` | 新建会话；`workspace` 必须命中 `/taskwatch/workspaces` 列出的路径 |
+| `/taskwatch/chat/create` | `{}` 或 `{workspace}` | 新建会话；`workspace` 必须命中 `/taskwatch/chat/workspaces` 列出的路径 |
 | `/taskwatch/chat/model` | `{sessionId,provider,model}` | 切换该会话使用的模型 |
 
 全部注册在 `ctx.webServer` 上，不代理 DSH 自身的 `/api`，也不转发任意路径。
@@ -112,7 +112,7 @@ DSH 的 Web GUI 没有内置鉴权，而默认 preset 往往是 `danger-full-acc
 `sessionController.create()` 收的是绝对路径（`cwd` / `workspaceId`）—— 直接透给公网
 客户端，等于把宿主的磁盘交出去。所以拆成两件事：
 
-- **选择权给手机**：`GET /taskwatch/workspaces` 回候选清单，页面只负责挑；
+- **选择权给手机**：`GET /taskwatch/chat/workspaces` 回候选清单，页面只负责挑；
 - **决定权留服务端**：`POST /taskwatch/chat/create` 拿客户端发来的字符串去清单里
   **逐字比对**，命中才写进 `cwd`，否则直接报错。
 

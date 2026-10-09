@@ -2127,7 +2127,7 @@ function closeWsPicker(){ var el = $('wsp'); if (el) el.classList.remove('on') }
 
 /** 右上角「+」：先选工作区，再新建并切过去。
  *
- *  清单来自 /taskwatch/workspaces，是**服务端列出来的**：客户端能挑，但挑不了清单外的
+ *  清单来自 /taskwatch/chat/workspaces，是**服务端列出来的**：客户端能挑，但挑不了清单外的
  *  路径（宿主侧只采纳逐字命中的那一条）。所以"手机上想开在哪儿"和"手机能碰哪些磁盘"
  *  是两件事，后者仍然由服务端决定。
  */
@@ -2148,7 +2148,7 @@ async function openWsPicker(){
   setSub('正在取工作区…')
   var rows = []
   try {
-    var r = await fetch('/taskwatch/workspaces', { cache:'no-store' }).then(function(x){ return x.json() })
+    var r = await fetch('/taskwatch/chat/workspaces', { cache:'no-store' }).then(function(x){ return x.json() })
     rows = (r && r.workspaces) || []
     setSub(rows.length ? '' : ((r && r.error) ? ('取工作区失败：' + r.error) : '没有可选工作区，只能用默认'))
   } catch (e) { setSub('取工作区失败：' + e.message) }

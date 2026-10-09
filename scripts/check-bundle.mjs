@@ -169,14 +169,22 @@ check('交付文件路由走 lib/files.js 的白名单解析',
 // 2026-10-09：从 9 增到 10 —— 新增 /taskwatch/chat/usage（只读），
 // 手机端指标行靠它拿「轮次 / 步数 / token / 缓存命中 / 上下文占用」。
 // 这个数字故意钉死：以后再加路由，必须回到这一行确认一次是有意为之。
-check('对话路由共 10 条（6 读 + 4 写，增删都要是有意识的）',
-  chatPaths.length === 10, `实际 ${chatPaths.length}：${chatPaths.join(' ')}`)
+// 2026-10-09：从 10 增到 11 —— 新增 /taskwatch/chat/workspaces（只读），
+// 手机端「+」先选工作区再建会话。
+// 这个数字故意钉死：以后再加路由，必须回到这一行确认一次是有意为之。
+check('对话路由共 11 条（7 读 + 4 写，增删都要是有意识的）',
+  chatPaths.length === 11, `实际 ${chatPaths.length}：${chatPaths.join(' ')}`)
 check('对话路由把 sessionController 当软依赖、并逐请求获取',
   /ctx\.get\('sessionController'\)/.test(hostSrc) && /chatOf\(\)/.test(hostSrc))
 check('prompt 的 requestId 由宿主生成（客户端不能决定请求身份）',
   /requestId:\s*randomUUID\(\)/.test(hostSrc))
-check('新建会话不接受客户端指定 cwd',
-  !/request\.cwd\s*=/.test(hostSrc))
+// 2026-10-09：这条原来钉的是 !/request\.cwd\s*=/（"不接受客户端指定 cwd"）。
+// 工作区选择改变了能力，但没有改变"谁来决定" —— 所以断言跟着改成钉**新的边界**，
+// 旧写法整条删掉：留着它就只能靠绕过它来加功能，那才是真的失去守门。
+check('cwd 只能来自服务端的工作区清单，不能是客户端原样字符串',
+  /const hit = \(await workspaceList\(\)\)\.find/.test(hostSrc) &&
+    /request\.cwd = hit\.path/.test(hostSrc) &&
+    !/request\.cwd = asText\(/.test(hostSrc))
 check("SSE 关掉了 nginx 缓冲（否则流式会退化成一次性）",
   hostSrc.includes("'x-accel-buffering': 'no'"))
 
@@ -444,13 +452,13 @@ check('正文排版尺度（行高 / 段间 / 标题间距 / 列表间距 / 中�
 // 工作区选择：能做，但只能做服务端允许的那部分。这两条断言钉的是那个边界本身 ——
 // 清单由服务端给、create 只采纳清单内路径、页面不自己拼路径。
 check('工作区清单由服务端给，create 只采纳清单内路径',
-  /path: '\/taskwatch\/workspaces'/.test(hostSrc) &&
+  /path: '\/taskwatch\/chat\/workspaces'/.test(hostSrc) &&
     /DSH_TASKWATCH_WORKSPACES/.test(hostSrc) &&
     /这个工作区不在服务端的候选清单里/.test(hostSrc) &&
     /request\.cwd = hit\.path/.test(hostSrc) &&
     /statSync\(raw\)\.isDirectory\(\)/.test(hostSrc))
 check('手机页从服务端取工作区清单，不自己拼路径',
-  /fetch\('\/taskwatch\/workspaces'/.test(page) &&
+  /fetch\('\/taskwatch\/chat\/workspaces'/.test(page) &&
     /chat\/create', path \? \{ workspace: path \} : \{\}/.test(page) &&
     /el\.id = 'wsp'/.test(page) && /#wsp\{/.test(page))
 
