@@ -677,6 +677,62 @@ html,body{overflow-x:clip}
   .bub.streaming::after{animation:none;opacity:.5;transform:none}
 }
 
+
+/* ===== 竖屏牌桌（#poker）=====
+   手机上的德扑：座位铺在竖椭圆上，底部是四个大按钮。
+   所有尺寸都用 min()/百分比，390px 宽不横向溢出。 */
+#poker{position:fixed;inset:0;z-index:70;display:none;flex-direction:column;
+  background:#0d1512;color:#eaf5ee;font-size:14px;overflow:hidden}
+#poker.on{display:flex}
+.pk-top{display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border-bottom:1px solid rgba(255,255,255,.08);flex:0 0 auto}
+.pk-top b{font-size:15px;font-weight:600}
+.pk-top .pk-meta{margin-left:auto;font-size:12px;opacity:.7;text-align:right;line-height:1.35}
+.pk-x{width:34px;height:34px;border:0;border-radius:9px;background:rgba(255,255,255,.09);
+  color:inherit;font-size:17px;line-height:1;cursor:pointer}
+.pk-felt{position:relative;flex:1 1 auto;margin:10px 12px;border-radius:46% / 30%;
+  background:radial-gradient(ellipse at 50% 45%,#1c5f45 0%,#14453422 60%,#0d1512 100%),
+    linear-gradient(#17553f,#0f3a2b);border:1px solid rgba(255,255,255,.10);
+  box-shadow:inset 0 0 40px rgba(0,0,0,.35);min-height:0}
+.pk-seat{position:absolute;transform:translate(-50%,-50%);width:88px;padding:5px 6px;
+  border-radius:10px;background:rgba(0,0,0,.42);border:1px solid rgba(255,255,255,.10);
+  text-align:center;line-height:1.25;overflow:hidden}
+.pk-seat .nm{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk-seat .st{font-size:11px;opacity:.78;font-variant-numeric:tabular-nums}
+.pk-seat.folded{opacity:.34}
+.pk-seat.turn{border-color:#ffd166;box-shadow:0 0 0 2px rgba(255,209,102,.45)}
+.pk-seat.hero{background:rgba(24,90,66,.72);border-color:rgba(120,255,200,.5)}
+.pk-seat .bd{position:absolute;top:-7px;left:-7px;min-width:16px;height:16px;border-radius:8px;
+  background:#ffd166;color:#20160a;font-size:10px;line-height:16px;font-weight:700}
+.pk-seat .cd{margin-top:3px;font-size:11px;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+.pk-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(84%,300px);
+  text-align:center}
+.pk-pot{font-size:12px;opacity:.85;margin-bottom:6px}
+.pk-board{display:flex;justify-content:center;gap:5px;flex-wrap:wrap}
+.pk-card{min-width:34px;height:46px;border-radius:6px;background:#f4f7f5;color:#16221c;
+  font-size:15px;font-weight:600;line-height:46px;text-align:center;padding:0 4px}
+.pk-card.back{background:repeating-linear-gradient(45deg,#2a6b52,#2a6b52 4px,#215741 4px,#215741 8px);
+  color:transparent}
+.pk-log{flex:0 0 auto;max-height:52px;overflow-y:auto;padding:0 14px;font-size:11.5px;
+  line-height:1.5;opacity:.72;overflow-wrap:anywhere}
+.pk-act{flex:0 0 auto;padding:10px 12px 14px;border-top:1px solid rgba(255,255,255,.08);
+  background:#0b120f}
+.pk-row{display:flex;gap:8px}
+.pk-btn{flex:1 1 0;min-width:0;min-height:52px;border:0;border-radius:12px;
+  background:rgba(255,255,255,.12);color:inherit;font-size:15px;font-weight:600;cursor:pointer}
+.pk-btn.p{background:#2fbf7f;color:#06231a}
+.pk-btn.r{background:#e0574f;color:#fff}
+.pk-btn:disabled{opacity:.34;cursor:default}
+.pk-rate{display:flex;align-items:center;gap:10px;margin-top:9px}
+.pk-rate input{flex:1 1 auto;min-width:0;accent-color:#2fbf7f}
+.pk-rate .amt{font-size:12px;font-variant-numeric:tabular-nums;min-width:52px;text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk-hint{margin-top:8px;font-size:12px;opacity:.72;text-align:center;overflow-wrap:anywhere}
+.pk-toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:80;
+  max-width:78vw;padding:8px 12px;border-radius:10px;background:rgba(0,0,0,.82);
+  font-size:12.5px;opacity:0;transition:opacity .18s;pointer-events:none;overflow-wrap:anywhere}
+.pk-toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.pk-toast{transition:none}}
 </style>
 </head>
 <body>
@@ -691,6 +747,7 @@ html,body{overflow-x:clip}
       <span class="t" id="sessTitle">连接中…</span>
       <span class="s" id="sessSub">正在连接</span>
     </div>
+    <button id="pokerBtn" class="iconbtn" aria-label="德州扑克"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c3.2 3.6 6 6.2 6 9.3 0 2.3-1.7 4-3.9 4-1 0-1.8-.3-2.4-.9.4 1.6 1.2 2.9 2.4 3.9H9.9c1.2-1 2-2.3 2.4-3.9-.6.6-1.4.9-2.4.9-2.2 0-3.9-1.7-3.9-4C6 8.2 8.8 5.6 12 2z"/></svg></button>
     <button id="newBtn" class="iconbtn" aria-label="新建对话">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
     </button>
@@ -2121,6 +2178,187 @@ $('input').addEventListener('keydown', function(e){
 })
 $('sessBtn').addEventListener('click', openSessions)
 $('newBtn').addEventListener('click', openWsPicker)
+
+/* ===== 竖屏牌桌：读同源 /dsh-holdem，会话与 CSRF 走响应头 =====
+   注意：宿主上这条路由是插件提供的（前缀转发），本页不新增任何路由。 */
+var PK = { on: false, sid: '', csrf: '', snap: null, timer: 0, busy: false, seen: '' }
+function pkEl(){ return $('poker') }
+function pkToast(msg){
+  var el = $('pkToast'); if (!el) return
+  el.textContent = msg; el.classList.add('on')
+  clearTimeout(pkToast.t); pkToast.t = setTimeout(function(){ el.classList.remove('on') }, 2600)
+}
+function pkHdr(res){
+  try {
+    var s = res.headers.get('x-holdem-session'); if (s) PK.sid = s
+    var c = res.headers.get('x-csrf-token'); if (c) PK.csrf = c
+  } catch (e) {}
+}
+function pkCall(path, body){
+  var opt = { method: body ? 'POST' : 'GET', credentials: 'same-origin', headers: {} }
+  if (PK.sid) opt.headers['X-Holdem-Session'] = PK.sid
+  if (PK.csrf) opt.headers['X-CSRF-Token'] = PK.csrf
+  if (body) { opt.headers['content-type'] = 'application/json'; opt.body = JSON.stringify(body) }
+  return fetch('/dsh-holdem' + path, opt).then(function(res){
+    pkHdr(res)
+    return res.text().then(function(t){
+      var data = null
+      try { data = t ? JSON.parse(t) : null } catch (e) {}
+      if (!res.ok) throw new Error((data && (data.message || data.error)) || ('HTTP ' + res.status))
+      return data
+    })
+  })
+}
+function pkOpen(){
+  PK.on = true; pkEl().classList.add('on')
+  pkToast('正在连牌桌...')
+  pkPoll(0)
+}
+function pkClose(){
+  PK.on = false; pkEl().classList.remove('on')
+  clearTimeout(PK.timer); PK.timer = 0
+}
+function pkPoll(delay){
+  clearTimeout(PK.timer)
+  PK.timer = setTimeout(function(){
+    if (!PK.on) return
+    pkCall('').then(function(s){ PK.snap = s; PK.seen = ''; pkRender(s) })
+      .catch(function(err){ pkToast('牌桌连不上：' + err.message) })
+      .then(function(){ if (PK.on) pkPoll(1800) })
+  }, delay || 1800)
+}
+function pkCard(code, hidden){
+  var cls = 'pk-card' + (hidden ? ' back' : '')
+  var txt = hidden ? '??' : String(code || '')
+  return '<div class="' + cls + '">' + pkEsc(txt) + '</div>'
+}
+function pkEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c]
+  })
+}
+function pkSeatPos(i){
+  // 竖椭圆：0 号在正下方（自己），其余逆时针铺开。
+  var pts = [[50,86],[17,68],[17,33],[50,15],[83,33],[83,68]]
+  return pts[i % 6]
+}
+function pkRender(s){
+  if (!s) return
+  var me = null, i, list = s.players || []
+  var legal = s.legal || {}
+  var html = '', pos
+  for (i = 0; i < list.length; i++){
+    var p = list[i] || {}
+    pos = pkSeatPos(i)
+    var isHero = (s.heroIndex === i) || p.isHero || p.hero
+    if (isHero) me = p
+    var turn = s.toAct && (s.toAct.seat === i || s.toAct.name === p.name)
+    var badge = ''
+    if (i === s.dealer) badge = 'D'
+    else if (i === s.sb) badge = 'SB'
+    else if (i === s.bb) badge = 'BB'
+    var cards = ''
+    if (p.cards && p.cards.length) cards = '<div class="cd">' + pkEsc(p.cards.join(' ')) + '</div>'
+    html += '<div class="pk-seat' + (isHero ? ' hero' : '') + (p.folded ? ' folded' : '') +
+      (turn ? ' turn' : '') + '" style="left:' + pos[0] + '%;top:' + pos[1] + '%">' +
+      (badge ? '<div class="bd">' + badge + '</div>' : '') +
+      '<div class="nm">' + pkEsc(p.name || ('座位 ' + (i + 1))) + '</div>' +
+      '<div class="st">' + pkEsc(p.stack == null ? '' : p.stack) + '</div>' + cards + '</div>'
+  }
+  $('pkSeats').innerHTML = html
+  var board = (s.board || []).map(function(c){ return pkCard(c, false) }).join('')
+  $('pkMid').innerHTML = '<div class="pk-pot">底池 ' + pkEsc(s.pot == null ? 0 : s.pot) +
+    (s.street ? ' | ' + pkEsc(s.street) : '') + (s.handNo ? ' | 第 ' + pkEsc(s.handNo) + ' 手' : '') +
+    '</div><div class="pk-board">' + board + '</div>' +
+    (s.heroHand && s.heroHand.length ? '<div class="pk-hint">你的牌：' + pkEsc(s.heroHand.join(' ')) + '</div>' : '')
+  var log = (s.log || []).slice(-3).map(function(l){
+    return pkEsc(typeof l === 'string' ? l : (l && (l.text || l.msg)) || '')
+  }).join('<br>')
+  $('pkLog').innerHTML = log
+  // 动作区
+  var can = !PK.busy && !!(legal.fold || legal.check || legal.call || legal.raise)
+  var waiting = !can && !s.gameOver
+  $('pkFold').disabled = !legal.fold
+  $('pkCheck').disabled = !legal.check
+  $('pkCall').disabled = !legal.call
+  $('pkCheck').textContent = legal.check ? '过牌' : (legal.call ? ('跟注 ' + (legal.callAmount || '')) : '过牌')
+  var raisable = !!legal.raise
+  $('pkRaise').disabled = !raisable
+  var lo = legal.minRaiseTo || 0, hi = legal.maxRaiseTo || 0
+  var r = $('pkRange')
+  r.min = lo; r.max = hi; r.disabled = !raisable
+  if (raisable && (+r.value < lo || +r.value > hi)) r.value = Math.min(hi, Math.max(lo, Math.round((lo + hi) / 2)))
+  $('pkAmt').textContent = raisable ? (r.value + '') : ''
+  $('pkNext').style.display = waiting ? '' : 'none'
+  $('pkHint').textContent = PK.busy ? '提交中...' :
+    (s.gameOver ? '本局结束' : (can ? (s.toAct && s.toAct.name ? ('轮到 ' + s.toAct.name) : '轮到你') : '等待其他玩家…'))
+}
+function pkAct(action){
+  if (PK.busy) return
+  PK.busy = true; pkRender(PK.snap)
+  var body = { action: action }
+  if (action === 'raise') body.amount = +$('pkRange').value
+  pkCall('/act', body).then(function(s){ PK.snap = s; pkRender(s) })
+    // 插件的加注金额字段名若是 to 而不是 amount，这里兜一次，免得手机上"加注"永远失败。
+    .catch(function(err){
+      if (action !== 'raise') { pkToast('操作失败：' + err.message); return null }
+      var b2 = { action: 'raise', to: +$('pkRange').value }
+      return pkCall('/act', b2).then(function(s){ PK.snap = s; pkRender(s) })
+        .catch(function(e2){ pkToast('加注失败：' + e2.message) })
+    })
+    .then(function(){ PK.busy = false; if (PK.snap) pkRender(PK.snap); pkPoll(400) })
+}
+function pkStart(){
+  if (PK.busy) return
+  PK.busy = true
+  pkCall('/start', {}).then(function(s){ PK.snap = s; pkRender(s) })
+    .catch(function(err){ pkToast('开局失败：' + err.message) })
+    .then(function(){ PK.busy = false; if (PK.snap) pkRender(PK.snap); pkPoll(400) })
+}
+function pkNext(){
+  if (PK.busy) return
+  PK.busy = true
+  pkCall('/next-hand', {}).then(function(s){ PK.snap = s; pkRender(s) })
+    .catch(function(err){ pkToast('下一手失败：' + err.message) })
+    .then(function(){ PK.busy = false; if (PK.snap) pkRender(PK.snap); pkPoll(400) })
+}
+$('pokerBtn').addEventListener('click', pkOpen)
+$('poker').innerHTML = [
+  '<div class="pk-top"><b>德州扑克</b>',
+  '<div class="pk-meta" id="pkHint">正在连接…</div>',
+  '<button class="pk-x" id="pkClose" aria-label="关闭"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>',
+  '<div class="pk-felt" id="pkSeatsWrap"><div id="pkSeats"></div><div class="pk-mid" id="pkMid"></div></div>',
+  '<div class="pk-log" id="pkLog"></div>',
+  '<div class="pk-act">',
+  '<div class="pk-row">',
+  '<button class="pk-btn r" id="pkFold">弃牌</button>',
+  '<button class="pk-btn" id="pkCheck">过牌</button>',
+  '<button class="pk-btn p" id="pkRaise">加注</button>',
+  '</div>',
+  '<div class="pk-rate"><input type="range" id="pkRange" min="0" max="0" step="1">',
+  '<span class="amt" id="pkAmt"></span></div>',
+  '<div class="pk-row" style="margin-top:9px">',
+  '<button class="pk-btn" id="pkStart">开始</button>',
+  '<button class="pk-btn" id="pkNext" style="display:none">下一手</button>',
+  '</div></div>',
+  '<div class="pk-toast" id="pkToast"></div>'
+].join('')
+$('pkClose').addEventListener('click', pkClose)
+$('pkFold').addEventListener('click', function(){ pkAct('fold') })
+$('pkCheck').addEventListener('click', function(){
+  pkAct($('pkCheck').textContent.indexOf('跟注') === 0 ? 'call' : 'check')
+})
+$('pkRaise').addEventListener('click', function(){ pkAct('raise') })
+$('pkStart').addEventListener('click', pkStart)
+$('pkNext').addEventListener('click', pkNext)
+$('pkRange').addEventListener('input', function(){ $('pkAmt').textContent = $('pkRange').value })
+document.addEventListener('visibilitychange', function(){
+  if (!PK.on) return
+  if (document.hidden) clearTimeout(PK.timer)
+  else pkPoll(0)
+})
+window.addEventListener('keydown', function(e){ if (e.key === 'Escape' && PK.on) pkClose() })
+
 $('status').addEventListener('click', openStatus)
 
 function closeWsPicker(){ var el = $('wsp'); if (el) el.classList.remove('on') }
