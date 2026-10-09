@@ -505,6 +505,129 @@ html,body{overflow-x:clip}
 #lb .x{position:absolute;top:calc(8px + env(safe-area-inset-top));right:10px;width:44px;height:44px;
   border-radius:50%;border:1px solid rgba(255,255,255,.34);background:rgba(255,255,255,.12);
   color:#fff;font-size:18px;line-height:1}
+/* ══ 10. 纸墨微动 ──────────────────────────────────────────────────────
+   这一节的规矩，写给下一个改这里的人：
+
+   · 只服务信息：在跑 / 完成 / 失败 / 有新消息 / 图正在显影。没有"为了好看"的动。
+   · 位移 ≤3px，时长 120–320ms，曲线统一"起步快、末段收"（墨入纸），不做回弹过冲。
+   · **所有入场动画都必须由 JS 加上的类门控**（.loading/.done/.fresh/.awake/.tick/
+     .go/.inking）。这段 JS 不跑时，页面必须完全静态**且完整** —— 图片不允许被藏起来、
+     失败卡片不允许反复抖、指标行不允许闪。这条是硬约束，不是风格偏好。
+   · 上面那个 prefers-reduced-motion 块会把这里的一切压成瞬变，不要绕过它；
+     被压平后仍然要能读出状态，见本节末尾的例外。
+   ───────────────────────────────────────────────────────────────────── */
+:root{
+  --mo-fast:120ms; --mo-base:200ms; --mo-slow:320ms;
+  --mo-ease:cubic-bezier(.22,.61,.24,1);   /* 墨入纸：起步快、末段收 */
+  --mo-spring:cubic-bezier(.2,.9,.25,1);   /* 结构件：抽屉、浮标 */
+  --mo-ink:rgba(15,17,21,.06);
+}
+:root[data-theme='dark']{--mo-ink:rgba(255,255,255,.075)}
+
+/* 按压：不是整块变灰，是从指尖洇开一点墨。.inkdot 由 JS 生成；
+   没有 JS 时退化成各自的 :active 变色，功能不减。 */
+.inkdot{
+  position:absolute;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,var(--mo-ink) 0%,var(--mo-ink) 38%,transparent 72%);
+  transform:translate(-50%,-50%) scale(.05);
+}
+.inkdot.go{animation:inkSpread var(--mo-slow) var(--mo-ease) forwards}
+@keyframes inkSpread{
+  from{transform:translate(-50%,-50%) scale(.05);opacity:1}
+  to{transform:translate(-50%,-50%) scale(1);opacity:0}
+}
+.pillbtn,.iconbtn,#send,.item,.toolgroup .gh,.tool .more,.filecard,.md-imgwrap{
+  transition:transform var(--mo-fast) var(--mo-ease),background var(--mo-base) var(--mo-ease),
+             border-color var(--mo-base) var(--mo-ease),opacity var(--mo-base) var(--mo-ease);
+}
+.pillbtn:active,.iconbtn:active,.item:active,.toolgroup .gh:active,.tool .more:active,.filecard:active{
+  transform:scale(.975);
+}
+#send:active{transform:scale(.94)}
+
+/* 输入框里有字 → 发送键"醒过来"：外圈浮一层光晕（JS 加 .awake） */
+#send{box-shadow:0 0 0 0 rgba(76,141,255,0)}
+#send.awake{box-shadow:0 0 0 4px rgba(76,141,255,.14)}
+
+/* 流式生成：.bub.streaming 本来就用尾部渐隐表示"还在往下长"（既有代码切换的类，
+   所以这里不需要新 JS）。再加一枚呼吸的墨点，像笔尖停在纸上。 */
+.bub.streaming::after{
+  content:'';display:inline-block;width:6px;height:6px;margin-left:4px;border-radius:50%;
+  background:currentColor;opacity:.5;vertical-align:middle;
+  animation:inkBreath 1.15s var(--mo-ease) infinite;
+}
+@keyframes inkBreath{0%,100%{opacity:.22;transform:scale(.7)}50%{opacity:.75;transform:scale(1)}}
+
+/* 工具卡：在跑 = 一圈墨环在转（原来是描边方块）；完成 = 勾自己画出来；失败 = 顿一下。
+   .fresh 只在"状态刚刚变化"时由 JS 加上 —— 否则整段重渲染会让动画反复重放，
+   那就从"灵动"变成"抽搐"了。 */
+.tool.run .sp{
+  width:15px;height:15px;border:0;border-radius:50%;
+  background:conic-gradient(from 90deg,transparent 0 30%,var(--warn));
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2.2px),#000 calc(100% - 2.2px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 2.2px),#000 calc(100% - 2.2px));
+  animation:inker .85s linear infinite;
+}
+@keyframes inker{to{transform:rotate(360deg)}}
+.tool.fresh.ok .ti svg *{stroke-dasharray:22;animation:drawIn var(--mo-slow) var(--mo-ease) both}
+@keyframes drawIn{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
+.tool.fresh.no{animation:nudge var(--mo-base) var(--mo-ease) 1}
+@keyframes nudge{0%,100%{transform:translateX(0)}30%{transform:translateX(-2px)}70%{transform:translateX(2px)}}
+
+/* 图片：先落一块纸纹，显影时轻轻放大一点。注意 .loading 是 JS **之后**才加的 ——
+   JS 不跑时 .md-img 完全可见，绝不留隐形图。 */
+.md-img{transition:opacity var(--mo-slow) var(--mo-ease),transform var(--mo-slow) var(--mo-ease)}
+.md-imgwrap.loading .md-img{opacity:0;transform:scale(1.012)}
+.md-imgwrap.done .md-img{opacity:1;transform:none}
+.md-imgwrap.loading::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(100deg,transparent 18%,var(--mo-ink) 42%,transparent 62%);
+  animation:sheen 1.35s var(--mo-ease) infinite;
+}
+@keyframes sheen{from{transform:translateX(-55%)}to{transform:translateX(55%)}}
+
+/* 指标行：数值变了轻轻闪一下（数字本来就是等宽，不会左右抖） */
+.stats.tick{animation:tick var(--mo-base) var(--mo-ease)}
+@keyframes tick{from{opacity:.5}}
+
+/* 新消息浮标：弹出来，数字跳一下 */
+#tobottom.on{animation:pop var(--mo-slow) var(--mo-spring)}
+@keyframes pop{from{transform:translateY(7px) scale(.9)}}
+#tobottom .n:not([hidden]){animation:nPop var(--mo-base) var(--mo-spring)}
+@keyframes nPop{from{transform:scale(.55)}}
+
+/* 抽屉：像抽出一张纸，条目依次落下（每档 14ms，由 JS 设 animation-delay） */
+#sheet{animation:sheetUp var(--mo-slow) var(--mo-spring)}
+@keyframes sheetUp{from{transform:translateY(16px);opacity:.55}}
+#sheet .item.fresh{animation:itemIn var(--mo-base) var(--mo-ease) both}
+@keyframes itemIn{from{opacity:0;transform:translateY(5px)}}
+
+/* 主题切换：像一滴墨洇开整张纸。JS 放一层 #moire，底色取的是**新**主题的
+   --bg（变量是活的，所以这层墨就是"新纸"的颜色） */
+#moire{
+  position:fixed;inset:0;z-index:200;pointer-events:none;opacity:0;
+  background:var(--bg,#fff);clip-path:circle(0 at var(--mx,50%) var(--my,50%));
+}
+#moire.go{animation:moire var(--mo-slow) var(--mo-ease) forwards}
+@keyframes moire{
+  0%{opacity:.92;clip-path:circle(0 at var(--mx,50%) var(--my,50%))}
+  55%{opacity:.92;clip-path:circle(140vmax at var(--mx,50%) var(--my,50%))}
+  100%{opacity:0;clip-path:circle(140vmax at var(--mx,50%) var(--my,50%))}
+}
+
+/* 空态：虎鲸轻轻呼吸（4.2 秒一次、位移 3px —— 几乎察觉不到在动，但页面不"死"） */
+.empty .brand{animation:breathe 4.2s var(--mo-ease) infinite}
+@keyframes breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+
+/* 减小动效的例外：压成瞬变之后，"在跑"的墨环会停住、图片骨架会停在半透明 ——
+   状态仍然必须读得出来，所以这里给它们静态的等价形态，而不是简单地一起关掉。 */
+@media (prefers-reduced-motion:reduce){
+  .tool.run .sp{background:transparent;border:2px solid var(--warn);-webkit-mask:none;mask:none}
+  .md-imgwrap.loading .md-img{opacity:1;transform:none}
+  .md-imgwrap.loading::after{display:none}
+  .bub.streaming::after{animation:none;opacity:.5;transform:none}
+}
+
 </style>
 </head>
 <body>
@@ -2024,6 +2147,182 @@ window.fetch = function (u, o) {
     return r
   })
 }
+
+/* ── 纸墨微动 · 行为层 ──────────────────────────────────────────────────
+   这一层只管"什么时候"，不管"长什么样"（长什么样在上面第 10 节 CSS 里）。
+
+   它是纯渐进增强：整段不执行时，页面必须**完全静态且完整** —— 图片不会被藏起来、
+   失败卡片不会反复抖、指标行不会闪。所以这里没有"先隐藏、等 JS 显示"的写法：
+   所有动画类都是这里加上去的，CSS 里默认一个都没有。
+   ───────────────────────────────────────────────────────────────────── */
+;(function () {
+  var doc = document
+  var RM = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+
+  /* 1. 按压：从指尖洇开一点墨。用事件委托，所以将来新加的按钮只要写进选择器
+        就自动有这个反馈，不用一个个挂事件。 */
+  var INKY = '#send,.pillbtn,.iconbtn,.item,.toolgroup .gh,.tool .more,.filecard'
+  doc.addEventListener('pointerdown', function (e) {
+    if (RM || !e.target || !e.target.closest) return
+    var t = e.target.closest(INKY)
+    if (!t) return
+    var r = t.getBoundingClientRect()
+    if (getComputedStyle(t).position === 'static') t.style.position = 'relative'
+    t.style.overflow = 'hidden'
+    var d = doc.createElement('span')
+    d.className = 'inkdot'
+    var s = Math.max(r.width, r.height) * 2.4
+    d.style.width = s + 'px'
+    d.style.height = s + 'px'
+    d.style.left = (e.clientX - r.left) + 'px'
+    d.style.top = (e.clientY - r.top) + 'px'
+    t.appendChild(d)
+    /* 下一帧再加 .go：同一帧里插入并加类，动画的 from 帧会被跳过，
+       看起来像"凭空出现"而不是"洇开"。 */
+    requestAnimationFrame(function () { d.classList.add('go') })
+    setTimeout(function () { try { d.remove() } catch (err) {} }, 460)
+  }, { passive: true })
+
+  /* 2. 主题切换的那一滴墨。主题按钮是唯一带 aria-pressed 的 .iconbtn，所以不必
+        知道它的 id；在捕获阶段先摆好墨滴，再让原来的处理器翻主题 —— CSS 变量是
+        活的，这层墨取到的就是**新**主题的底色。 */
+  var moire = null
+  doc.addEventListener('pointerdown', function (e) {
+    if (RM || !e.target || !e.target.closest) return
+    if (!e.target.closest('.iconbtn[aria-pressed]')) return
+    if (!moire) {
+      moire = doc.createElement('div')
+      moire.id = 'moire'
+      doc.body.appendChild(moire)
+    }
+    moire.style.setProperty('--mx', e.clientX + 'px')
+    moire.style.setProperty('--my', e.clientY + 'px')
+    moire.classList.remove('go')
+    void moire.offsetWidth
+    moire.classList.add('go')
+    setTimeout(function () { moire.classList.remove('go') }, 420)
+  }, { passive: true, capture: true })
+
+  /* 3. 输入框里有字 → 发送键醒过来。用 input 委托，不必知道输入框的 id。 */
+  function wake () {
+    var s = doc.getElementById('send')
+    var i = doc.querySelector('.composer #input')
+    if (!s || !i) return
+    s.classList.toggle('awake', !!i.value.trim())
+  }
+  doc.addEventListener('input', wake, { passive: true })
+  setTimeout(wake, 300)
+
+  /* 4. 剩下都是"状态刚刚变化"的标记。没有 MutationObserver 就到此为止 ——
+        页面退回纯静态，功能一个不少。 */
+  if (!window.MutationObserver) return
+
+  var toolState = new Map()   /* 工具卡身份 -> 上一次的状态 */
+  var statsText = null
+  var firstPass = true
+
+  function mark () {
+    /* 4a. 工具卡：只在状态**真的变了**那一次加 .fresh。否则整段重渲染会让每个
+           动画反复重放，观感从"灵动"变"抽搐"。 */
+    var cards = doc.querySelectorAll('.tool')
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i]
+      var st = c.classList.contains('run') ? 'run' : (c.classList.contains('no') ? 'no' : 'ok')
+      var name = c.querySelector('.n')
+      var args = c.querySelector('.a')
+      var key = (name ? name.textContent : '#' + i) + '|' + (args ? args.textContent.slice(0, 60) : '')
+      var was = toolState.get(key)
+      toolState.set(key, st)
+      if (!firstPass && was !== undefined && was !== st) {
+        c.classList.remove('fresh')
+        void c.offsetWidth        /* 强制回流：同一个类直接加回去不会重放动画 */
+        c.classList.add('fresh')
+        setTimeout(function (el) { return function () { el.classList.remove('fresh') } }(c), 700)
+      }
+    }
+
+    /* 4b. 指标行：文字变了轻轻闪一下 */
+    var s = doc.querySelector('.stats')
+    if (s) {
+      var txt = s.textContent
+      if (!firstPass && statsText !== null && txt !== statsText) {
+        s.classList.remove('tick')
+        void s.offsetWidth
+        s.classList.add('tick')
+        setTimeout(function () { s.classList.remove('tick') }, 420)
+      }
+      statsText = txt
+    }
+
+    /* 4c. 图片：没加载完的才标 .loading（骨架流光），加载完 .done 显影。
+           注意 .loading 是这里**加上**的 —— JS 不跑时图片本来就直接可见。 */
+    var wraps = doc.querySelectorAll('.md-imgwrap')
+    for (var j = 0; j < wraps.length; j++) {
+      var w = wraps[j]
+      if (w.classList.contains('done')) continue
+      var im = w.querySelector('.md-img')
+      if (!im) continue
+      if (im.complete) {
+        w.classList.remove('loading')
+        w.classList.add('done')
+      } else {
+        w.classList.add('loading')
+      }
+    }
+
+    firstPass = false
+  }
+
+  /* 图片的 load/error 不冒泡，必须用捕获阶段才收得到 */
+  function settle (e) {
+    var im = e.target
+    if (!im || im.tagName !== 'IMG' || !im.closest) return
+    var w = im.closest('.md-imgwrap')
+    if (!w) return
+    w.classList.remove('loading')
+    w.classList.add('done')
+  }
+  doc.addEventListener('load', settle, true)
+  doc.addEventListener('error', settle, true)
+
+  /* 5. 抽屉每打开一次，条目依次落下（每档 14ms）。
+        两个触发点都要：hidden 属性变化（程序里打开时）+ 点左上角那颗胶囊
+        （真机上走的就是这条路）。只靠 hidden 的话，若抽屉本来就是打开状态、
+        或者条目是打开后才渲染的，这一档就漏掉了。 */
+  var sheet = doc.getElementById('sheet')
+  function stagger () {
+    if (!sheet || sheet.hidden) return
+    var items = sheet.querySelectorAll('.item')
+    for (var k = 0; k < items.length && k < 9; k++) {
+      (function (it, delay) {
+        it.classList.remove('fresh')
+        void it.offsetWidth
+        it.style.animationDelay = delay + 'ms'
+        it.classList.add('fresh')
+        setTimeout(function () { it.classList.remove('fresh') }, 520 + delay)
+      })(items[k], k * 14)
+    }
+  }
+  if (sheet) {
+    new MutationObserver(stagger).observe(sheet, { attributes: true, attributeFilter: ['hidden'] })
+    doc.addEventListener('click', function (e) {
+      if (e.target && e.target.closest && e.target.closest('.pillbtn')) setTimeout(stagger, 0)
+    }, { passive: true })
+  }
+
+  /* 6. 观察整棵 body，用 rAF 合并：流式生成时 DOM 每秒会变很多次，
+        不合并的话每来一个 chunk 都要跑一轮 mark()。 */
+  var queued = false
+  function schedule () {
+    if (queued) return
+    queued = true
+    requestAnimationFrame(function () { queued = false; mark() })
+  }
+  new MutationObserver(schedule).observe(doc.body, {
+    childList: true, subtree: true, characterData: true,
+  })
+  mark()   /* 第一轮只记基线（firstPass 为真时不放动画），但会把未加载的图标记成 .loading */
+})()
 
 ;(async function(){
   await tick()

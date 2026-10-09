@@ -401,6 +401,30 @@ check('page.html 明暗两套令牌都有（暗色只有一份）',
   // base 规则里还有一个 :root[data-theme='dark']{color-scheme:dark}。
   (page.match(/:root\[data-theme='dark'\]\s*\{[^}]*--dsw-/g) || []).length === 1)
 
+// ── 动效层（第 10 节「纸墨微动」）─────────────────────────────────────────
+// 动效的风险不是"好不好看"，而是两件会真出事的事：
+//   1. 入场动画挂在**会被整段重渲染**的节点上 → 每 3 秒轮询一次就重放一次，
+//      观感从"灵动"变"抽搐"。所以它们必须由 JS 按"状态刚刚变化"加的类门控。
+//   2. 用 JS 先把内容藏起来、等加载完再显示 → JS 一挂，图片就永远看不见。
+//      所以"隐藏"只能挂在 JS **之后**加上去的 .loading 上。
+// 这两条正面钉住，不靠肉眼。
+check('动效层声明了统一的时长与曲线令牌',
+  /--mo-fast:120ms/.test(page) && /--mo-base:200ms/.test(page) &&
+    /--mo-slow:320ms/.test(page) && /--mo-ease:cubic-bezier/.test(page) &&
+    /--mo-spring:cubic-bezier/.test(page))
+check('入场动画由 JS 加的类门控，不在 .tool/.md-img 上裸挂',
+  !/\.tool\.(ok|no)\s*\{[^}]*animation:/.test(page) &&
+    !/\.md-img\s*\{[^}]*animation:/.test(page) &&
+    /\.tool\.fresh\.no\s*\{[^}]*animation:/.test(page) &&
+    /\.md-imgwrap\.loading \.md-img\{opacity:0/.test(page) &&
+    /\.md-imgwrap\.done \.md-img\{opacity:1/.test(page))
+check('缩小动效时状态语义仍在（墨环与骨架图有静态等价）',
+  /prefers-reduced-motion:reduce\)\{[\s\S]*?\.tool\.run \.sp\{background:transparent/.test(page) &&
+    /prefers-reduced-motion:reduce\)\{[\s\S]*?\.md-imgwrap\.loading \.md-img\{opacity:1/.test(page))
+check('行为层用事件委托 + rAF 合并（不逐按钮挂事件、不每个 chunk 都重算）',
+  /addEventListener\('pointerdown'/.test(page) &&
+    /requestAnimationFrame\(function \(\) \{ queued = false; mark\(\) \}\)/.test(page))
+
 // 结构图标必须是矢量 SVG，不能是 emoji 或 ☰ ➤ ✕ ✓ 这类字符：
 // 字符图标在不同字体下大小、基线、粗细都不一样，换台设备就变形。
 // 注释里提到这些字符是允许的，所以先剥掉注释再判。
