@@ -113,6 +113,30 @@ ok('kindOf 分类', kindOf('image/webp') === 'image' && kindOf('application/pdf'
 // 7. 上限本身要是个合理的数（运行时无法造 32MB 文件来测，只断言配置合理）。
 ok('单文件上限在 1MB ~ 64MB 之间', MAX_BYTES >= 1048576 && MAX_BYTES <= 67108864, MAX_BYTES)
 
+// 8. 无扩展名：宿主附件库是内容寻址的，模型产出的图名字就是哈希、没有扩展名。
+//    只认扩展名的话，"把刚生成的这张图发我"会 403 —— 演示页一切正常、真机上是坏的。
+//    这一组就是那次真实验收暴露出来的回归。
+const pngNoExt = join(rootA, 'blob')
+const pdfNoExt = join(rootA, 'blob2')
+const htmlNoExt = join(rootA, 'blob3')
+const txtNoExt = join(rootA, 'blob4')
+writeFileSync(pngNoExt, Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.alloc(64, 0x41),
+]))
+writeFileSync(pdfNoExt, Buffer.from('%PDF-1.7\n' + 'x'.repeat(80)))
+writeFileSync(htmlNoExt, Buffer.from('<html><script>alert(1)</script>'.padEnd(80, ' ')))
+writeFileSync(txtNoExt, Buffer.from('just plain text, no magic bytes at all'.padEnd(80, '.')))
+const hitNoExt = resolveTarget(pngNoExt, ROOTS)
+ok('无扩展名的 PNG 按文件头识别', hitNoExt.ok === true && hitNoExt.mime === 'image/png', hitNoExt)
+ok('识别后补一个扩展名给下载文件名（手机得知道用什么打开）', hitNoExt.name === 'blob.png', hitNoExt.name)
+ok('无扩展名的 PDF 按文件头识别', (resolveTarget(pdfNoExt, ROOTS) || {}).mime === 'application/pdf')
+ok('无扩展名的 HTML 仍被拒（没有魔数可放行，白名单没放宽）', resolveTarget(htmlNoExt, ROOTS).error === 'unsupported-type')
+ok('无扩展名的纯文本仍被拒', resolveTarget(txtNoExt, ROOTS).error === 'unsupported-type')
+const tiny = join(rootA, 'tiny')
+writeFileSync(tiny, Buffer.from([0x89, 0x50]))
+ok('不足 12 字节的截断文件不会误判', resolveTarget(tiny, ROOTS).error === 'unsupported-type')
+
 rmSync(sandbox, { recursive: true, force: true })
 
 console.log('')
