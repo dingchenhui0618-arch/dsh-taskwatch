@@ -1,22 +1,42 @@
 # dsh-taskwatch
 
-Read-only task monitor for DeepSeek Harness. A phone-friendly status page plus a GUI
-sidebar panel, covering sessions, background jobs, subagents, goal rounds, workflows
-and pending approvals.
+**手机端的 DeepSeek Harness。** 把 DSH 装进手机桌面：左上角是会话列表，右上角新建对话，
+输入框上方是当前会话的实时指标（轮次 / 步数 / token 用量 / 缓存命中率 / 上下文占用），
+状态卡片让你一眼看到有几个任务在跑、有没有事在等你。
 
-DeepSeek Harness 的只读任务监控：一个适配手机的只读状态页，加一个 GUI 侧边栏面板，
-覆盖会话、后台任务、子代理、目标轮次、工作流与待审批事项。
+A phone client for DeepSeek Harness: talk to your DSH sessions from the phone, watch the
+reply stream in, interrupt whenever you want. It reuses the desktop GUI's design tokens,
+and adds a live metrics row above the composer.
 
-![手机端对话页（暗色）](docs/screenshot-1.png)
+![手机端对话页（亮色）](docs/screenshot-1.png)
 
 手机端不只是状态板：可以直接对话、逐字跟随输出、随时打断。连续的工具调用会折叠成
 一行「N 个步骤」，**失败的那一步永不隐藏**；助手回复支持轻量 markdown（标题、列表、
-行内代码、代码块）。
+行内代码、代码块），过宽的代码块会提示可以横滑。
 
-![会话抽屉（亮色）](docs/screenshot-2.png)
+![会话抽屉（暗色）](docs/screenshot-2.png)
 
-会话抽屉、状态卡片、输入框等全部走客户端同一套 design token —— 上图的暗色与这图的
-亮色都是真值，不是猜的近似色。所以它看起来像客户端的一部分，而不是另一个 App。
+会话抽屉、状态卡片、输入框等全部走客户端同一套 design token —— 上图的亮色与这图的
+暗色都是真值，不是猜的近似色。所以它看起来像客户端的一部分，而不是另一个 App。
+
+> 两张图里的会话、任务、对话**全是演示用的假数据**，不是任何真实会话。它们由
+> `docs/demo.html` 渲染——那个文件是 `scripts/make-demo.mjs` 从 `lib/page.html`
+> 生成的（`npm run demo` 重新生成），你可以直接用浏览器打开它，点着看，不需要装
+> 任何东西，也不会发出网络请求。契约测试会校验它与当前页面构建结果一致，防止它
+> 悄悄停在旧界面上。
+
+## 手机上怎么打开
+
+1. 在跑 DSH 的电脑上启用本插件，让它监听一个本地端口（见下文各章节）。
+2. 电脑侧起一个**反向隧道 / 中继**，把那个端口映射到一个 **HTTPS** 地址。
+   PWA 的 Service Worker 只在 **HTTPS（或 localhost）** 下工作——纯 HTTP 能看页面，
+   但装不到手机桌面，也没有离线壳。
+3. 手机上打开那个 HTTPS 地址，首次用一次性**配对码**换一个长期令牌，之后自动续期；
+   用浏览器的「添加到主屏幕」就能当 App 用。
+
+> 反代与隧道属于部署细节，本仓库只负责 DSH 这一侧：域名 + nginx + `ssh -R` 可以，
+> Tailscale、Cloudflare Tunnel、ngrok 之类同样可以（它们都能免费给出 HTTPS）。
+> **自己的专属入口链接里带访问令牌，等于完整控制权，绝不要提交到本仓库。**
 
 > 两张图里的会话、任务、对话**全是演示用的假数据**，不是任何真实会话。它们由
 > `docs/demo.html` 渲染——那个文件是 `scripts/make-demo.mjs` 从 `lib/page.html`
