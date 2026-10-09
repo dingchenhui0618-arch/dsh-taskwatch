@@ -424,6 +424,13 @@ check('缩小动效时状态语义仍在（墨环与骨架图有静态等价）'
 check('行为层用事件委托 + rAF 合并（不逐按钮挂事件、不每个 chunk 都重算）',
   /addEventListener\('pointerdown'/.test(page) &&
     /requestAnimationFrame\(function \(\) \{ queued = false; mark\(\) \}\)/.test(page))
+// 浮标的位置必须跟着**页脚真实高度**走。写死 bottom 的后果是它压住指标行中间那几个字，
+// 而指标行折成一行还是两行随内容变 —— 这类"某些屏、某些数据下才看得出"的毛病，
+// 靠截图偶尔撞见一次，靠断言才能不再回来。
+check('浮标按页脚真实高度定位，不是写死的像素',
+  /bottom:calc\(var\(--foot-h/.test(page) &&
+    /ResizeObserver\(putFoot\)\.observe\(foot\)/.test(page) &&
+    /setProperty\('--foot-h'/.test(page))
 
 // 结构图标必须是矢量 SVG，不能是 emoji 或 ☰ ➤ ✕ ✓ 这类字符：
 // 字符图标在不同字体下大小、基线、粗细都不一样，换台设备就变形。

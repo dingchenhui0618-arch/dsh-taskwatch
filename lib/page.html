@@ -418,11 +418,16 @@ footer{
 .bub.streaming{-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent);
   mask-image:linear-gradient(180deg,#000 calc(100% - 20px),transparent)}
 
-/* 5. 回到底部：离开底部才出现，并显示期间来了几条新消息。 */
-#tobottom{position:fixed;right:14px;bottom:calc(78px + var(--safe-b));z-index:30;
+/* 5. 回到底部：离开底部才出现，并显示期间来了几条新消息。
+   bottom 用 --foot-h —— 行为层用 ResizeObserver 从**页脚真实高度**写进来。
+   原先是写死的 78px，后果是浮标出现时正好压住指标行中间那几个字；而指标行折成
+   一行还是两行随内容变，写死就一定会在某些屏/某些数据下压住。拿不到 --foot-h 时
+   （JS 没跑）回落成旧值，位置与以前一致，不会更差。 */
+#tobottom{position:fixed;right:14px;bottom:calc(var(--foot-h) + 10px);z-index:30;
   display:none;align-items:center;gap:6px;min-height:44px;padding:0 14px;
   border-radius:999px;background:var(--panel);border:1px solid var(--line2);
-  color:var(--fg);font-size:13.5px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+  color:var(--fg);font-size:13.5px;box-shadow:0 6px 20px rgba(0,0,0,.18);
+  transition:bottom var(--mo-base) var(--mo-ease)}
 #tobottom.on{display:flex}
 #tobottom svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
@@ -521,6 +526,11 @@ html,body{overflow-x:clip}
   --mo-ease:cubic-bezier(.22,.61,.24,1);   /* 墨入纸：起步快、末段收 */
   --mo-spring:cubic-bezier(.2,.9,.25,1);   /* 结构件：抽屉、浮标 */
   --mo-ink:rgba(15,17,21,.06);
+  /* 页脚高度由行为层用 ResizeObserver 写进来（右下浮标贴在它上面）。
+     默认值必须写在这里，而**不能**写成 var(--foot-h, calc(...)) —— 嵌套 calc 的
+     var 回退会被判无效，整条 bottom 声明作废，浮标就退回静态位置、正好压住指标行。
+     这是 2026-10-09 实测踩到的：间距 -4px，量出来才知道。 */
+  --foot-h:calc(78px + var(--safe-b));
 }
 :root[data-theme='dark']{--mo-ink:rgba(255,255,255,.075)}
 
@@ -2321,6 +2331,22 @@ window.fetch = function (u, o) {
   new MutationObserver(schedule).observe(doc.body, {
     childList: true, subtree: true, characterData: true,
   })
+  /* 7. 右下浮标要站在页脚**之上**。页脚高度是个变量（指标行随内容折成一行或两行），
+        写死 bottom 的后果就是它压住指标行中间那几个字 —— 这是 2026-10-09 从截图里
+        看出来的。用 ResizeObserver 拿页脚真实高度写进 --foot-h，定位交给 CSS；
+        没有 ResizeObserver 就退回窗口 resize，两样都没有就还是手册里的旧值。 */
+  var foot = doc.querySelector('footer')
+  if (foot) {
+    var putFoot = function () {
+      try {
+        doc.documentElement.style.setProperty('--foot-h', Math.round(foot.getBoundingClientRect().height) + 'px')
+      } catch (err) {}
+    }
+    if (window.ResizeObserver) new ResizeObserver(putFoot).observe(foot)
+    else doc.addEventListener('resize', putFoot, { passive: true })
+    putFoot()
+  }
+
   mark()   /* 第一轮只记基线（firstPass 为真时不放动画），但会把未加载的图标记成 .loading */
 })()
 
