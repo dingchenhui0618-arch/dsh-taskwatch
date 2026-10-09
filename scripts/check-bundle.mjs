@@ -155,8 +155,11 @@ const chatPaths = declaredPaths.filter((p) => !READONLY_ROUTES.has(p))
 check('新增路由全部落在 /taskwatch/chat/ 之下（写能力只从这一组来）',
   chatPaths.length > 0 && chatPaths.every((p) => p.startsWith('/taskwatch/chat/')),
   chatPaths.join(' ') || '(没有)')
-check('对话路由共 9 条（5 读 + 4 写，增删都要是有意识的）',
-  chatPaths.length === 9, `实际 ${chatPaths.length}：${chatPaths.join(' ')}`)
+// 2026-10-09：从 9 增到 10 —— 新增 /taskwatch/chat/usage（只读），
+// 手机端指标行靠它拿「轮次 / 步数 / token / 缓存命中 / 上下文占用」。
+// 这个数字故意钉死：以后再加路由，必须回到这一行确认一次是有意为之。
+check('对话路由共 10 条（6 读 + 4 写，增删都要是有意识的）',
+  chatPaths.length === 10, `实际 ${chatPaths.length}：${chatPaths.join(' ')}`)
 check('对话路由把 sessionController 当软依赖、并逐请求获取',
   /ctx\.get\('sessionController'\)/.test(hostSrc) && /chatOf\(\)/.test(hostSrc))
 check('prompt 的 requestId 由宿主生成（客户端不能决定请求身份）',
