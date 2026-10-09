@@ -2232,6 +2232,27 @@ function pkPoll(delay){
       .then(function(){ if (PK.on) pkPoll(1800) })
   }, delay || 1800)
 }
+function pkCardText(c){
+  // 牌面可能是 "Ah" 这样的字符串，也可能是 {rank,suit} 这样的对象（真机就是这样）。
+  // 这个函数**不允许抛错**：一旦抛，整块渲染中断，牌桌就点不动了。
+  if (c == null) return ""
+  if (typeof c === "string") return c
+  if (typeof c === "number") return String(c)
+  if (typeof c !== "object") return "?"
+  var r = c.rank != null ? c.rank : (c.value != null ? c.value : (c.v != null ? c.v : (c.r != null ? c.r : null)))
+  var s = c.suit != null ? c.suit : (c.s != null ? c.s : (c.symbol != null ? c.symbol : null))
+  if (r != null || s != null) return String(r == null ? "" : r) + String(s == null ? "" : s)
+  try {
+    // 字段名没见过就按值顺序拼出来 —— 宁可显示得难看，也绝不显示 [object Object]。
+    return Object.keys(c).map(function(k){ return String(c[k]) }).join("")
+  } catch (e) { return "?" }
+}
+function pkCardList(v){
+  if (!v) return []
+  if (Array.isArray(v)) return v.map(pkCardText)
+  if (typeof v === "string") return v.trim() ? v.trim().split(/\s+/) : []
+  return [pkCardText(v)]
+}
 function pkCard(code, hidden){
   var cls = 'pk-card' + (hidden ? ' back' : '')
   var txt = hidden ? '??' : String(code || '')
@@ -2254,16 +2275,17 @@ function pkRender(s){
   var html = '', pos
   for (i = 0; i < list.length; i++){
     var p = list[i] || {}
-    pos = pkSeatPos(i)
-    var isHero = (s.heroIndex === i) || p.isHero || p.hero
+    pos = pkSeatPos(p.seat == null ? i : p.seat)
+    var isHero = (p.kind === "human") || (s.heroIndex === i) || p.isHero || p.hero
     if (isHero) me = p
-    var turn = s.toAct && (s.toAct.seat === i || s.toAct.name === p.name)
+    var turn = !!(p.isToAct || (s.toAct && (s.toAct.seat === i || s.toAct.name === p.name)))
     var badge = ''
-    if (i === s.dealer) badge = 'D'
-    else if (i === s.sb) badge = 'SB'
-    else if (i === s.bb) badge = 'BB'
+    if (p.isDealer || i === s.dealer) badge = 'D'
+    else if (p.isSb || i === s.sb) badge = 'SB'
+    else if (p.isBb || i === s.bb) badge = 'BB'
     var cards = ''
-    if (p.cards && p.cards.length) cards = '<div class="cd">' + pkEsc(p.cards.join(' ')) + '</div>'
+    var pcs = pkCardList(p.cards)
+    if (pcs.length) cards = '<div class="cd">' + pkEsc(pcs.join(' ')) + '</div>'
     html += '<div class="pk-seat' + (isHero ? ' hero' : '') + (p.folded ? ' folded' : '') +
       (turn ? ' turn' : '') + '" style="left:' + pos[0] + '%;top:' + pos[1] + '%">' +
       (badge ? '<div class="bd">' + badge + '</div>' : '') +
@@ -2271,11 +2293,11 @@ function pkRender(s){
       '<div class="st">' + pkEsc(p.stack == null ? '' : p.stack) + '</div>' + cards + '</div>'
   }
   $('pkSeats').innerHTML = html
-  var board = (s.board || []).map(function(c){ return pkCard(c, false) }).join('')
+  var board = pkCardList(s.board).map(function(c){ return pkCard(c, false) }).join('')
   $('pkMid').innerHTML = '<div class="pk-pot">底池 ' + pkEsc(s.pot == null ? 0 : s.pot) +
     (s.street ? ' | ' + pkEsc(s.street) : '') + (s.handNo ? ' | 第 ' + pkEsc(s.handNo) + ' 手' : '') +
     '</div><div class="pk-board">' + board + '</div>' +
-    (s.heroHand && s.heroHand.length ? '<div class="pk-hint">你的牌：' + pkEsc(s.heroHand.join(' ')) + '</div>' : '')
+    (pkCardList(s.heroHand).length ? '<div class="pk-hint">你的牌：' + pkEsc(pkCardList(s.heroHand).join(' ')) + '</div>' : '')
   var log = (s.log || []).slice(-3).map(function(l){
     return pkEsc(typeof l === 'string' ? l : (l && (l.text || l.msg)) || '')
   }).join('<br>')
@@ -2294,7 +2316,8 @@ function pkRender(s){
   r.min = lo; r.max = hi; r.disabled = !raisable
   if (raisable && (+r.value < lo || +r.value > hi)) r.value = Math.min(hi, Math.max(lo, Math.round((lo + hi) / 2)))
   $('pkAmt').textContent = raisable ? (r.value + '') : ''
-  $('pkNext').style.display = waiting ? '' : 'none'
+  // 空闲时不该出现「下一手」：只有牌局进行中、且轮不到你的时候才需要它。
+  $('pkNext').style.display = (waiting && s.status === 'playing') ? '' : 'none'
   $('pkStart').style.display = (s.status === 'playing') ? 'none' : ''
   $('pkHint').textContent = PK.busy ? '提交中...' :
     (s.gameOver ? '本局结束' : (can ? (s.toAct && s.toAct.name ? ('轮到 ' + s.toAct.name) : '轮到你') : '等待其他玩家…'))
