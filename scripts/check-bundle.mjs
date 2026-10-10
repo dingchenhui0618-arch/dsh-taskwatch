@@ -15,6 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
+import { Script as VmScript } from 'node:vm'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
@@ -283,16 +284,24 @@ check('sw.js 显式放过对话接口',
 check('sw.js 的外壳走网络优先（改了页面手机才会更新）',
   /fetch\(e\.request\)/.test(sw) && /\.catch\(\(\)\s*=>\s*caches\.match\(e\.request\)/.test(sw))
 
-// 这两条防的是 2026-10-08 那次"手机一直停在只读旧页、而服务端两份文件字节一致"：
-//   - install 用原子的 addAll，任何一个 URL 当次取不到就整体回滚，旧 SW 永远掌权；
-//   - 新 SW 接管后不主动重载，已经打开的那个页面本身不会变，用户看到的仍是旧页。
+// 下面这条防的是 2026-10-08 那次"手机一直停在只读旧页、而服务端两份文件字节一致"：
+// install 用原子的 addAll，任何一个 URL 当次取不到就整体回滚，旧 SW 永远掌权。
 check('sw.js 的 install 用 allSettled 而非原子 addAll',
   // 先剥掉整行注释再判：sw.js 的说明文字里正好提到了 c.addAll(SHELL) 这串字，
   // 不剥的话这条会对着注释报失败。
   /Promise\.allSettled\(SHELL\.map/.test(sw.replace(/^\s*\/\/.*$/gm, '')) &&
   !/\.addAll\(/.test(sw.replace(/^\s*\/\/.*$/gm, '')))
-check('sw.js 在 activate 时主动重载已打开的页面',
-  /clients\.matchAll\(\{\s*type:\s*'window'\s*\}\)/.test(sw) && /\.navigate\(/.test(sw))
+// 2026-10-10 的真实事故（也是"手机页打不开"的真凶）：上一版为了对付"旧外壳不会自己
+// 变新"，在 activate 里主动 navigate 每个 window —— 那次导航又要由**尚未完成
+// activate 的**自己来接管，两边互等。注册从此永远停在 state === "activating"，
+// scope 内（也就是整个 /taskwatch）所有导航一起挂死；而同一个 URL 用 curl 或从
+// scope 外 fetch 只要 110ms，服务端完全正常，从外面根本查不出来。
+// 更糟的是有一条断言在**要求**这段代码，所以它被锁死了 —— 现在反过来钉住它。
+// 页面已经是网络优先，每次导航都取新版，这种重载既没必要也致命。
+check('sw.js 的 activate 不导航自己（会自我死锁，把 scope 内导航全挂死）',
+  !/clients\.matchAll\(\{\s*type:\s*'window'\s*\}\)/.test(sw.replace(/^\s*\/\/.*$/gm, '')) &&
+  !/\.navigate\(/.test(sw.replace(/^\s*\/\/.*$/gm, '')) &&
+  /clients\.claim\(\)/.test(sw))
 check('page.html 把会话标题经 esc() 再拼进 HTML',
   /esc\(title\)/.test(page))
 const escUses = (page.match(/esc\(/g) || []).length
@@ -483,6 +492,36 @@ check('轮不到你时页面当场说原因，200 不当成生效',
   /还没轮到你，等对手行动/.test(page) &&
     /这一下没生效：刚轮到别人/.test(page) &&
     /if \(!\(live\.status === 'playing' && live\.toAct === 0\)\)/.test(page))
+// 牌面：插件下发的是 {r:2..14, s:'s'|'h'|'d'|'c'}（dsh-holdem src/cards.js:2-3）。
+// 不映射就是真机上的 "13h 14d" —— 那是 K♥ A♦，但没人看得懂。红桃/方块还要标红。
+check('牌面按插件的真实编码映射成 K♥ 这种可读形式',
+  /var PK_RANK = \{ 14:'A', 13:'K'/.test(page) && /var PK_SUIT = \{ s:'♠', h:'♥', d:'♦', c:'♣' \}/.test(page) &&
+    /PK_RANK\[r\] != null \? PK_RANK\[r\] : String\(r\)/.test(page) &&
+    /'pk-card' \+ \(hidden \? ' back' : ''\)/.test(page) && /\.pk-card\.red\{color:#c0392b\}/.test(page))
+// 座位里的牌是纯文本、公共牌走 pkCard()，两条渲染路径各有一套红字，缺一条就有一半的牌不红。
+check('座位与公共牌的红色花色都标了（两条渲染路径都照顾到）',
+  /\.pk-seat \.cd \.cdc\.red\{color:#ff9a8f\}/.test(page) &&
+    /<span class="cdc' \+ \(\/\[♥♦\]\/\.test\(t\) \? ' red' : ''\)/.test(page))
+// heroHand 是牌型名（成牌前是「底牌」），不是牌面：标成「你的牌」会把人绕晕。
+// 说明文字里会引用那个错标法，所以剥掉注释再判。
+check('不把 heroHand（牌型名）当成牌面显示',
+  !/你的牌：/.test(pageCode) && /s\.heroHand !== '底牌' \? '<div class="pk-hint">牌型：'/.test(pageCode))
+
+// ── 内联脚本必须能被 JS 解析器解析 ──────────────────────────────────────────
+// 2026-10-10 的真实事故：改牌桌提示那一行时少写了一个右括号，整段 IIFE 直接
+// SyntaxError —— 页面照样返回 200、"看着正常"，而聊天区与牌桌一起死（#pkSeats
+// 根本没建出来）。当轮 133 条契约**全是字符串匹配**，一条都没红。
+// 这是本仓库第三次栽在"字符串检查会撒谎"上，所以让解析器自己说话。
+const inlineScripts = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1])
+let inlineSyntaxError = ''
+const inlineOk = inlineScripts.length >= 2 && inlineScripts.every((src, i) => {
+  try { new VmScript(src, { filename: `page-inline-${i + 1}.js` }); return true } catch (err) {
+    inlineSyntaxError = `第 ${i + 1} 段：${err.message}`
+    return false
+  }
+})
+check('page.html 的内联脚本能被解析器解析（语法错误不靠肉眼）', inlineOk,
+  inlineSyntaxError || `内联脚本段数=${inlineScripts.length}`)
 
 // 结构图标必须是矢量 SVG，不能是 emoji 或 ☰ ➤ ✕ ✓ 这类字符：
 // 字符图标在不同字体下大小、基线、粗细都不一样，换台设备就变形。

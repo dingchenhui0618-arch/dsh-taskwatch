@@ -705,12 +705,14 @@ html,body{overflow-x:clip}
 .pk-seat .bd{position:absolute;top:-7px;left:-7px;min-width:16px;height:16px;border-radius:8px;
   background:#ffd166;color:#20160a;font-size:10px;line-height:16px;font-weight:700}
 .pk-seat .cd{margin-top:3px;font-size:11px;letter-spacing:.5px;font-variant-numeric:tabular-nums}
+.pk-seat .cd .cdc.red{color:#ff9a8f}
 .pk-mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(84%,300px);
   text-align:center}
 .pk-pot{font-size:12px;opacity:.85;margin-bottom:6px}
 .pk-board{display:flex;justify-content:center;gap:5px;flex-wrap:wrap}
 .pk-card{min-width:34px;height:46px;border-radius:6px;background:#f4f7f5;color:#16221c;
   font-size:15px;font-weight:600;line-height:46px;text-align:center;padding:0 4px}
+.pk-card.red{color:#c0392b}
 .pk-card.back{background:repeating-linear-gradient(45deg,#2a6b52,#2a6b52 4px,#215741 4px,#215741 8px);
   color:transparent}
 .pk-log{flex:0 0 auto;max-height:52px;overflow-y:auto;padding:0 14px;font-size:11.5px;
@@ -2232,8 +2234,15 @@ function pkPoll(delay){
       .then(function(){ if (PK.on) pkPoll(1800) })
   }, delay || 1800)
 }
+// 插件下发的牌是 {r:2..14, s:'s'|'h'|'d'|'c'}（src/cards.js:2-3）。
+// 真机上直接把 r、s 拼起来就是 "13h 14d" —— 谁在牌桌上看这个都读不出来，
+// 所以照插件自家客户端的映射（client.cjs:170-171）翻成 K♥ / A♦。
+var PK_RANK = { 14:'A', 13:'K', 12:'Q', 11:'J', 10:'10', 9:'9', 8:'8', 7:'7', 6:'6', 5:'5', 4:'4', 3:'3', 2:'2' }
+var PK_SUIT = { s:'♠', h:'♥', d:'♦', c:'♣' }
+function pkRankTxt(r){ return r == null ? '' : (PK_RANK[r] != null ? PK_RANK[r] : String(r)) }
+function pkSuitTxt(s){ return s == null ? '' : (PK_SUIT[s] != null ? PK_SUIT[s] : String(s)) }
 function pkCardText(c){
-  // 牌面可能是 "Ah" 这样的字符串，也可能是 {rank,suit} 这样的对象（真机就是这样）。
+  // 牌面可能是 "Ah" 这样的字符串，也可能是 {r,s} 这样的对象（真机就是这样）。
   // 这个函数**不允许抛错**：一旦抛，整块渲染中断，牌桌就点不动了。
   if (c == null) return ""
   if (typeof c === "string") return c
@@ -2241,7 +2250,7 @@ function pkCardText(c){
   if (typeof c !== "object") return "?"
   var r = c.rank != null ? c.rank : (c.value != null ? c.value : (c.v != null ? c.v : (c.r != null ? c.r : null)))
   var s = c.suit != null ? c.suit : (c.s != null ? c.s : (c.symbol != null ? c.symbol : null))
-  if (r != null || s != null) return String(r == null ? "" : r) + String(s == null ? "" : s)
+  if (r != null || s != null) return pkRankTxt(r) + pkSuitTxt(s)
   try {
     // 字段名没见过就按值顺序拼出来 —— 宁可显示得难看，也绝不显示 [object Object]。
     return Object.keys(c).map(function(k){ return String(c[k]) }).join("")
@@ -2254,8 +2263,9 @@ function pkCardList(v){
   return [pkCardText(v)]
 }
 function pkCard(code, hidden){
-  var cls = 'pk-card' + (hidden ? ' back' : '')
   var txt = hidden ? '??' : String(code || '')
+  // 红桃/方块标红：牌桌上这是最省一次辨认的约定。
+  var cls = 'pk-card' + (hidden ? ' back' : '') + (!hidden && /[♥♦]/.test(txt) ? ' red' : '')
   return '<div class="' + cls + '">' + pkEsc(txt) + '</div>'
 }
 function pkEsc(s){
@@ -2288,7 +2298,11 @@ function pkRender(s){
     else if (p.isBb || i === s.bb) badge = 'BB'
     var cards = ''
     var pcs = pkCardList(p.cards)
-    if (pcs.length) cards = '<div class="cd">' + pkEsc(pcs.join(' ')) + '</div>'
+    // 座位里的牌是纯文本（比公共牌小一号），所以红桃/方块要在这里单独标红 ——
+    // 公共牌走的是 pkCard()，那里已经有 red 类，两边都要照顾到。
+    if (pcs.length) cards = '<div class="cd">' + pcs.map(function(t){
+      return '<span class="cdc' + (/[♥♦]/.test(t) ? ' red' : '') + '">' + pkEsc(t) + '</span>'
+    }).join(' ') + '</div>'
     html += '<div class="pk-seat' + (isHero ? ' hero' : '') + (p.folded ? ' folded' : '') +
       (turn ? ' turn' : '') + '" style="left:' + pos[0] + '%;top:' + pos[1] + '%">' +
       (badge ? '<div class="bd">' + badge + '</div>' : '') +
@@ -2300,7 +2314,9 @@ function pkRender(s){
   $('pkMid').innerHTML = '<div class="pk-pot">底池 ' + pkEsc(s.pot == null ? 0 : s.pot) +
     (s.street ? ' | ' + pkEsc(s.street) : '') + (s.handNo ? ' | 第 ' + pkEsc(s.handNo) + ' 手' : '') +
     '</div><div class="pk-board">' + board + '</div>' +
-    (pkCardList(s.heroHand).length ? '<div class="pk-hint">你的牌：' + pkEsc(pkCardList(s.heroHand).join(' ')) + '</div>' : '')
+    // host.js:254 的 heroHand 是**牌型名**（成牌前固定是「底牌」），不是牌面 ——
+    // 以前这里标成「你的牌：底牌」，纯属把人绕晕。牌面已经在座位上画出来了。
+    (s.heroHand && s.heroHand !== '底牌' ? '<div class="pk-hint">牌型：' + pkEsc(s.heroHand) + '</div>' : '')
   var log = (s.log || []).slice(-3).map(function(l){
     return pkEsc(typeof l === 'string' ? l : (l && (l.text || l.msg)) || '')
   }).join('<br>')
@@ -2329,11 +2345,12 @@ function pkRender(s){
   $('pkStart').style.display = (s.status === 'playing') ? 'none' : ''
   var thinking = null
   for (i = 0; i < list.length; i++) if (list[i] && list[i].isToAct) thinking = list[i]
-  $('pkHint').textContent = PK.busy ? '提交中...' :
-    (s.gameOver ? '本局结束'
-      : (s.status !== 'playing' ? (s.status === 'idle' ? '点「开始」发牌' : '这一手结束了')
-        : (myTurn ? '轮到你'
-          : (((thinking && thinking.name ? thinking.name : '对手') + ' 正在思考…'))))
+  var who = (thinking && thinking.name) ? thinking.name : '对手'
+  $('pkHint').textContent = PK.busy ? '提交中...'
+    : s.gameOver ? '本局结束'
+    : s.status !== 'playing' ? (s.status === 'idle' ? '点「开始」发牌' : '这一手结束了')
+    : myTurn ? '轮到你'
+    : who + ' 正在思考…'
 }
 function pkAct(action){
   if (PK.busy) return
@@ -2747,7 +2764,7 @@ window.fetch = function (u, o) {
   mark()   /* 第一轮只记基线（firstPass 为真时不放动画），但会把未加载的图标记成 .loading */
 })()
 
-var DEMO={"generatedAt":1791596934090,"offline":false,"errors":[],"totals":{"sessions":4,"running":2,"jobs":5,"jobsRunning":3,"subagents":2,"workflows":1,"pending":1},"pending":[{"title":"等待确认：删除 3 个过期缓存目录","detail":"即将对 build/cache 下的过期产物执行清理，需要你先确认。","kind":"approval/request","session":"session-demo-a","at":1791596889090}],"sessions":[{"id":"session-demo-a","title":"重构支付模块的重试逻辑","running":true,"activeJobs":2,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/payments","updatedAt":1791596931090,"goal":{"phase":"active","roundsStarted":7,"maxGoalRounds":50,"activation":"armed","objective":"把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。"}},{"id":"session-demo-b","title":"整理季度报表导出","running":true,"activeJobs":1,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/reports","updatedAt":1791596916090,"goal":{"phase":"active","roundsStarted":3,"maxGoalRounds":20,"activation":"armed","objective":"导出去年四个季度的报表并核对口径。"}},{"id":"session-demo-c","title":"排查登录态失效问题","running":false,"activeJobs":0,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/web","updatedAt":1791594534090,"goal":null},{"id":"session-demo-d","title":"更新部署文档","running":false,"activeJobs":0,"live":false,"origin":"subagent","depth":1,"preset":"cordis","cwd":"~/projects/docs","updatedAt":1791588334090,"goal":null}],"jobs":[{"id":"job-1","label":"pnpm test --filter payments","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791596624090,"finishedAt":0},{"id":"job-2","label":"node scripts/build.mjs","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791596839090,"finishedAt":0},{"id":"job-3","label":"node scripts/export-report.mjs --quarter Q3","kind":"pwsh","status":"running","owner":"session-demo-b","startedAt":1791596214090,"finishedAt":0},{"id":"job-4","label":"git log --oneline -50","kind":"pwsh","status":"done","owner":"session-demo-c","startedAt":1791593934090,"finishedAt":1791593936090},{"id":"job-5","label":"node scripts/make-icons.mjs","kind":"pwsh","status":"failed","owner":"session-demo-b","startedAt":1791591734090,"finishedAt":1791591739090}],"subagents":[{"id":"agent-demo-1","label":"核对接口字段","mode":"subagent","activity":"running","depth":1,"parent":"session-demo-a"},{"id":"agent-demo-2","label":"翻译发布说明","mode":"subagent","activity":"idle","depth":1,"parent":"session-demo-b"}],"workflows":[{"id":"wf-demo-1","name":"回归测试与发布检查","phase":"verify","logs":42,"startedAt":1791595134090}]};
+var DEMO={"generatedAt":1791597712910,"offline":false,"errors":[],"totals":{"sessions":4,"running":2,"jobs":5,"jobsRunning":3,"subagents":2,"workflows":1,"pending":1},"pending":[{"title":"等待确认：删除 3 个过期缓存目录","detail":"即将对 build/cache 下的过期产物执行清理，需要你先确认。","kind":"approval/request","session":"session-demo-a","at":1791597667910}],"sessions":[{"id":"session-demo-a","title":"重构支付模块的重试逻辑","running":true,"activeJobs":2,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/payments","updatedAt":1791597709910,"goal":{"phase":"active","roundsStarted":7,"maxGoalRounds":50,"activation":"armed","objective":"把支付回调的重试从固定间隔改成指数退避，并补齐幂等键的边界用例。"}},{"id":"session-demo-b","title":"整理季度报表导出","running":true,"activeJobs":1,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/reports","updatedAt":1791597694910,"goal":{"phase":"active","roundsStarted":3,"maxGoalRounds":20,"activation":"armed","objective":"导出去年四个季度的报表并核对口径。"}},{"id":"session-demo-c","title":"排查登录态失效问题","running":false,"activeJobs":0,"live":true,"origin":"root","depth":0,"preset":"cordis","cwd":"~/projects/web","updatedAt":1791595312910,"goal":null},{"id":"session-demo-d","title":"更新部署文档","running":false,"activeJobs":0,"live":false,"origin":"subagent","depth":1,"preset":"cordis","cwd":"~/projects/docs","updatedAt":1791589112910,"goal":null}],"jobs":[{"id":"job-1","label":"pnpm test --filter payments","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791597402910,"finishedAt":0},{"id":"job-2","label":"node scripts/build.mjs","kind":"pwsh","status":"running","owner":"session-demo-a","startedAt":1791597617910,"finishedAt":0},{"id":"job-3","label":"node scripts/export-report.mjs --quarter Q3","kind":"pwsh","status":"running","owner":"session-demo-b","startedAt":1791596992910,"finishedAt":0},{"id":"job-4","label":"git log --oneline -50","kind":"pwsh","status":"done","owner":"session-demo-c","startedAt":1791594712910,"finishedAt":1791594714910},{"id":"job-5","label":"node scripts/make-icons.mjs","kind":"pwsh","status":"failed","owner":"session-demo-b","startedAt":1791592512910,"finishedAt":1791592517910}],"subagents":[{"id":"agent-demo-1","label":"核对接口字段","mode":"subagent","activity":"running","depth":1,"parent":"session-demo-a"},{"id":"agent-demo-2","label":"翻译发布说明","mode":"subagent","activity":"idle","depth":1,"parent":"session-demo-b"}],"workflows":[{"id":"wf-demo-1","name":"回归测试与发布检查","phase":"verify","logs":42,"startedAt":1791595912910}]};
 var DEMO_ITEMS=[{"kind":"user","text":"把回调的重试从固定间隔改成指数退避，先只动这一处。"},{"kind":"assistant","text":"已定位到入口。当前是**固定 5 秒**、最多 3 次，退避逻辑抽在 `retryPolicy` 里。"},{"kind":"tool","callId":"t1","name":"grep","hint":"retryPolicy","status":"ok"},{"kind":"tool","callId":"t2","name":"read","hint":"src/payments/callback.ts","status":"ok"},{"kind":"tool","callId":"t3","name":"edit","hint":"src/payments/retry.ts","status":"ok"},{"kind":"tool","callId":"t4","name":"pwsh","hint":"pnpm test --filter payments","status":"no"},{"kind":"assistant","text":"## 改动\n\n- 基础 2 秒，上限 60 秒\n- 保留最后一次失败的原始异常\n\n```ts\nconst delay = Math.min(60000, 2000 * 2 ** attempt)\n```\n\n单测 12/12 通过，幂等键的重复投递用例也补上了。"},{"kind":"assistant","text":"顺手画了一张退避曲线，直接在对话里看：\n\n![退避曲线](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI3MjAiIGhlaWdodD0iMzQwIiB2aWV3Qm94PSIwIDAgNzIwIDM0MCI+CjxyZWN0IHdpZHRoPSI3MjAiIGhlaWdodD0iMzQwIiByeD0iMTYiIGZpbGw9IiNlNmVhZjAiLz4KPHRleHQgeD0iMjgiIHk9IjQ2IiBmb250LWZhbWlseT0ic3lzdGVtLXVpLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTkiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMyZDMxMzkiPumHjeivlemXtOmalO+8muWbuuWumiA1cyDihpIg5oyH5pWw6YCA6YG/PC90ZXh0Pgo8dGV4dCB4PSIyOCIgeT0iNzQiIGZvbnQtZmFtaWx5PSJzeXN0ZW0tdWksc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzViNjI3MCI+5ryU56S65pWw5o2uIMK3IOmdnuecn+WunuWbvuihqDwvdGV4dD4KPGcgZmlsbD0iIzJkMzEzOSI+CjxyZWN0IHg9IjYwIiB5PSIyMjAiIHdpZHRoPSI1OCIgaGVpZ2h0PSI3MCIgcng9IjYiLz4KPHJlY3QgeD0iMTUwIiB5PSIxODAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxMTAiIHJ4PSI2IiBvcGFjaXR5PSIuODIiLz4KPHJlY3QgeD0iMjQwIiB5PSIxNDAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxNTAiIHJ4PSI2IiBvcGFjaXR5PSIuNjYiLz4KPHJlY3QgeD0iMzMwIiB5PSIxMTAiIHdpZHRoPSI1OCIgaGVpZ2h0PSIxODAiIHJ4PSI2IiBvcGFjaXR5PSIuNSIvPgo8cmVjdCB4PSI0MjAiIHk9Ijk2IiB3aWR0aD0iNTgiIGhlaWdodD0iMTk0IiByeD0iNiIgb3BhY2l0eT0iLjM0Ii8+CjwvZz4KPGcgZmlsbD0iIzViNjI3MCIgZm9udC1mYW1pbHk9InN5c3RlbS11aSxzYW5zLXNlcmlmIiBmb250LXNpemU9IjEzIj4KPHRleHQgeD0iNjYiIHk9IjMxMiI+MnM8L3RleHQ+PHRleHQgeD0iMTU2IiB5PSIzMTIiPjRzPC90ZXh0Pjx0ZXh0IHg9IjI0NiIgeT0iMzEyIj44czwvdGV4dD4KPHRleHQgeD0iMzM2IiB5PSIzMTIiPjE2czwvdGV4dD48dGV4dCB4PSI0MjYiIHk9IjMxMiI+MzJzPC90ZXh0Pgo8L2c+Cjwvc3ZnPg==)\n\n说明也导出了：\n\n[改造说明.pdf](~/dsh/outbox/demo-report.pdf)"},{"kind":"assistant","text":"还差一件事：缓存目录的清理要你确认后才执行。"}];
 // 演示页：不轮询、不联网、任何会话都能点开看同一份示例对话。
 // tick / ensureSession / startPolling / openStream 都是函数声明（会提升），覆盖安全。
