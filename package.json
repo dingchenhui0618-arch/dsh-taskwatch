@@ -1,7 +1,7 @@
 {
   "name": "dsh-taskwatch",
   "version": "1.3.0",
-  "description": "A phone client for DeepSeek Harness: sessions, live chat, delivery files (images and PDFs inline) and a real-time metrics row.",
+  "description": "手机端的 DeepSeek Harness，不用装 App：一份只读任务监控页长成的手机浏览器客户端（会话 / 实时对话 / 交付文件 / 任务监控）。Phone client for DeepSeek Harness with no app to install.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

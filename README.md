@@ -1,12 +1,17 @@
 # dsh-taskwatch
 
-**手机端的 DeepSeek Harness。** 把 DSH 装进手机桌面：左上角是会话列表，右上角新建对话，
-输入框上方是当前会话的实时指标（轮次 / 步数 / token 用量 / 缓存命中率 / 上下文占用），
-状态卡片让你一眼看到有几个任务在跑、有没有事在等你。
+**手机端的 DeepSeek Harness，不用装 App。** 它起初只是一份只读的**任务监控页**——让你在手机上
+瞄一眼 DSH 有几个任务在跑、有没有事在等你；后来接上了 DSH 自己的会话运行时，长成了手机浏览器里
+的 DSH 客户端：左上角会话列表、右上角新建对话、输入框上方是当前会话的实时指标（轮次 / 步数 /
+token 用量 / 缓存命中率 / 上下文占用），可以直接对话、逐字跟随输出、随时打断。
 
-A phone client for DeepSeek Harness: talk to your DSH sessions from the phone, watch the
-reply stream in, interrupt whenever you want. It reuses the desktop GUI's design tokens,
-and adds a live metrics row above the composer.
+没有 App：不需要原生代码、不需要打包、不需要上架、不需要装任何东西——浏览器打开，用「添加到
+主屏幕」就当一个 App 用（PWA，只要求 HTTPS 或 localhost）。
+
+A phone client for DeepSeek Harness with **no app to install**: a plain read-only task monitor
+that grew into the phone-side DSH client. Talk to your sessions from the phone, watch the reply
+stream in, interrupt whenever you want; it reuses the desktop GUI's design tokens and adds a live
+metrics row above the composer.
 
 ![手机端对话页（亮色）](docs/screenshot-1.png)
 
@@ -25,7 +30,21 @@ and adds a live metrics row above the composer.
 > 任何东西，也不会发出网络请求。契约测试会校验它与当前页面构建结果一致，防止它
 > 悄悄停在旧界面上。
 
-## 手机上怎么打开
+## 从任务监控长成手机端
+
+第一版只有「读」：一份只读页面，把 DSH 的会话、后台任务、子代理、goal、工作流与待批准
+渲染成手机上看得懂的样子。目的很朴素——不用坐到电脑前，也能知道它现在在干什么、有没有
+事在等你。
+
+后来发现同一组窄接口能接上 DSH **自己的**会话运行时，于是「写」只用了 4 条路由就够：
+对话、逐字收回复、随时停止、切换会话与模型。**读是监控，写是对话**——两者共用一套令牌和
+一条反向隧道，始终不碰 GUI。
+
+所以这里没有 App 可装：没有原生代码、没有打包产物、没有应用商店。手机上进一次「添加到主
+屏幕」，之后它就是一个图标；页面按请求读盘、壳由 Service Worker 换版，所以代码更新后下一次
+打开就会跟上。
+
+## 手机上怎么打开（不用装 App）
 
 1. 在跑 DSH 的电脑上启用本插件，让它监听一个本地端口（见下文各章节）。
 2. 电脑侧起一个**反向隧道 / 中继**，把那个端口映射到一个 **HTTPS** 地址。
