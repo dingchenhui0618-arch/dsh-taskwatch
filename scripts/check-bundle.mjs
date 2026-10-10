@@ -140,6 +140,18 @@ check('宿主 apply 声明了 1 个形参（ctx）', host.apply.length === 1, St
 const hostSrc = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
 check("宿主注册了 '/taskwatch' 路由", hostSrc.includes("'/taskwatch'"))
 
+// 外壳（页面 / SW）必须**按请求读盘**，不能在模块加载时读一次就缓存。
+// 2026-10-10：中继本来就是按请求读盘的，所以手机刷新就生效；插件这边原先缓存，
+// 于是同一份 page.html 有了两个生效时机 —— 手机已经是新版，本机 /taskwatch 还是
+// 旧版，还要重启整个客户端才更新。实测差：手机 112018 字符 vs 宿主内存 110001 字符。
+// 改成每次请求重读（几十 KB 的本地文件，开销可忽略）。manifest 仍内联在代码里，
+// 那是**改代码**，本来就要重启，不在这条断言的范围内。
+check('页面与 SW 按请求读盘（改了页面不用重启客户端就生效）',
+  !/^const (PAGE|SERVICE_WORKER)\s*=/m.test(hostSrc) &&
+    /send\(res, 200, 'text\/html; charset=utf-8', readPage\(\)\)/.test(hostSrc) &&
+    /send\(res, 200, 'text\/javascript; charset=utf-8', readSw\(\)/.test(hostSrc) &&
+    /function readPage\(\)/.test(hostSrc) && /function readSw\(\)/.test(hostSrc))
+
 // 写入口的范围。原来是 `!/method === 'POST'/` 这种"检查写法"的断言 ——
 // 2026-09-22 加了 8 条对话路由（其中 4 条是写）之后它**照样通过**，
 // 是一条假绿灯：它证明的是"没这么写"，不是"没有这个能力"。
