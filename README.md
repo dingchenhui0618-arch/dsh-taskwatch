@@ -285,6 +285,11 @@ dsh plugin --profile web add dsh-in-hand
 装完需要**重启 `dsh web`**：插件行来自 profile 的 bundle 图，而 client 侧模块元数据
 按 specifier 缓存且没有失效路径，所以增删插件一律要重启才生效。
 
+环境：Node ≥ 20（见 `engines.node`）。本包开发与实测的环境是 Windows 上的 DSH 桌面版
+**0.2.0-rc.2（nightly 通道）**。这个版本号是**实测记录，不是强制门槛**：我们刻意不声明
+`engines.dsh` 范围，因为没在稳定线（0.1.x-rc.*）上端到端跑过，写一个没验证过的下限
+只会把稳定版用户挡在门外。
+
 本包**没有构建步骤**：`lib/` 是提交进仓库的、可直接运行的产物，客户端 bundle 就是
 一个调用 `window.__ModuleLoader__.load({ id, factory })` 的普通脚本。从源码安装不需要
 任何构建授权（`allowBuilds`）。
