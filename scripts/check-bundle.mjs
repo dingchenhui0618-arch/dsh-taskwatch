@@ -116,8 +116,8 @@ check('apply(ctx) 不抛异常', applyError === null, applyError && applyError.m
 check('注入 sidebar.panellist', injected.includes('sidebar.panellist'), injected.join(', '))
 check('注入 main', injected.includes('main'), injected.join(', '))
 check('插入了一个 <style> 节点', styleNodes.length === 1, `实际 ${styleNodes.length} 个`)
-check('style 节点带 data-dsh-taskwatch 标记',
-  styleNodes[0] && styleNodes[0].attrs['data-dsh-taskwatch'] !== undefined)
+check('style 节点带 data-dsh-in-hand 标记',
+  styleNodes[0] && styleNodes[0].attrs['data-dsh-in-hand'] !== undefined)
 
 // --- 5. Host 半边的契约 ---
 //
@@ -228,6 +228,21 @@ check('files 含 lib 与 cordis.patch.yml',
 //      它是 npm 上公开的插件，别人的标题里出现 <img onerror> 就会执行。
 //   2) 手机上的耗电 —— 页面常驻后台标签页时不该继续每 3 秒发请求。
 const page = readFileSync(join(ROOT, 'lib', 'page.html'), 'utf8')
+
+// 改名的契约：package.json / 插件 id / 页面标题 / PWA 名称必须一起走，不许半途而废。
+// 2026-10-10 从 dsh-taskwatch 改成 dsh-in-hand（掌上 DSH）时加的。
+//
+// 注意这里查的是**包标识** "dsh-taskwatch"，不是路由前缀 "taskwatch"：
+// /taskwatch/* 是故意保留的对外契约——手机桌面那个入口就挂在它上面，
+// 改了要重新配对、重新加主屏，所以它继续叫 taskwatch。
+const IDENTITY_FILES = ['package.json', 'cordis.patch.yml', 'lib/index.js', 'lib/client.js', 'lib/page.html', 'lib/sw.js']
+const staleIdentity = IDENTITY_FILES.filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('dsh-taskwatch'))
+check('代码与包标识里没有残留的旧包名 dsh-taskwatch',
+  staleIdentity.length === 0, staleIdentity.join(', ') || '干净')
+
+const hostSource = readFileSync(join(ROOT, 'lib', 'index.js'), 'utf8')
+check('手机页标题与 PWA manifest 都是新名字「掌上 DSH」',
+  /<title>掌上 DSH<\/title>/.test(page) && /short_name: '掌上 DSH'/.test(hostSource))
 
 const escMap = /ESC\s*=\s*\{([^}]*)\}/.exec(page)
 const escaped = escMap ? escMap[1] : ''

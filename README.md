@@ -1,6 +1,6 @@
-# dsh-taskwatch
+# 掌上 DSH（dsh-in-hand）
 
-**手机端的 DeepSeek Harness，不用装 App。** 它起初只是一份只读的**任务监控页**——让你在手机上
+**掌上 DSH（dsh-in-hand）** —— 手机端的 DeepSeek Harness，不用装 App。 它起初只是一份只读的**任务监控页**——让你在手机上
 瞄一眼 DSH 有几个任务在跑、有没有事在等你；后来接上了 DSH 自己的会话运行时，长成了手机浏览器里
 的 DSH 客户端：左上角会话列表、右上角新建对话、输入框上方是当前会话的实时指标（轮次 / 步数 /
 token 用量 / 缓存命中率 / 上下文占用），可以直接对话、逐字跟随输出、随时打断。
@@ -279,7 +279,7 @@ DOM，有运行中的会话、后台任务、子代理或工作流时才重画�
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-taskwatch
+dsh plugin --profile web add dsh-in-hand
 ```
 
 装完需要**重启 `dsh web`**：插件行来自 profile 的 bundle 图，而 client 侧模块元数据
@@ -292,7 +292,7 @@ dsh plugin --profile web add dsh-taskwatch
 本地开发时也可以直接指向工作副本：
 
 ```sh
-dsh plugin --profile web add <你的绝对路径>/dsh-taskwatch
+dsh plugin --profile web add <你的绝对路径>/dsh-in-hand
 ```
 
 补丁里引用插件有两种写法，注意区别：bundle 自带的 `cordis.patch.yml` 用**包名**

@@ -9,19 +9,24 @@ name: Publish
 # One-time setup, on npm (the package must already exist on the registry before
 # this page will let you configure anything):
 #
-#   https://www.npmjs.com/package/dsh-taskwatch/settings -> Trusted Publisher
+#   https://www.npmjs.com/package/dsh-in-hand/settings -> Trusted Publisher
 #     Organization or user: dingchenhui0618-arch
-#     Repository:           dsh-taskwatch
+#     Repository:           dsh-in-hand
 #     Workflow filename:    publish.yml
 #     Environment:          (leave empty)
 #
-# `id-token: write` is the whole mechanism. Drop it and npm has no OIDC token to
-# exchange, falls back to looking for a token, finds none, and the run fails.
+# 2026-10-10 改名的遗留：Trusted Publisher 是**按包名 + 仓库名**绑定的，所以这一栏
+# 必须在新包 dsh-in-hand 上重新配置一次（旧绑定属于 dsh-taskwatch）。在那个页面配好
+# 之前，**tag 触发被关掉了**：否则推 v1.5.0 会跑出一个注定失败的红叉（OIDC 换不到
+# 凭据）。配好之后把下面的 `push: tags` 段恢复即可，或直接手动 dispatch 这个工作流。
+#
+# `id-token: write` 是全部机制。删掉它，npm 拿不到 OIDC token，退回找 token、找不到，
+# 整次运行失败。
 
 on:
-  push:
-    tags:
-      - 'v*'
+  # push:
+  #   tags:
+  #     - 'v*'
   workflow_dispatch:
 
 permissions:

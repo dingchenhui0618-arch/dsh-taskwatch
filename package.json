@@ -1,7 +1,7 @@
 {
-  "name": "dsh-taskwatch",
-  "version": "1.4.0",
-  "description": "手机端的 DeepSeek Harness，不用装 App：一份只读任务监控页长成的手机浏览器客户端（会话 / 实时对话 / 交付文件 / 任务监控）。Phone client for DeepSeek Harness with no app to install.",
+  "name": "dsh-in-hand",
+  "version": "1.5.0",
+  "description": "掌上 DSH：DeepSeek Harness 的手机端，不用装 App——会话、实时对话、交付文件、后台任务与待批准。 / DSH in hand: the phone client for DeepSeek Harness with no app to install.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -21,11 +21,13 @@
     "harness",
     "dsh",
     "dsh-plugin",
-    "monitor",
-    "observability",
+    "phone",
     "mobile",
+    "client",
     "pwa",
-    "remote"
+    "remote",
+    "monitor",
+    "observability"
   ],
   "engines": {
     "node": ">=20"
@@ -45,11 +47,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dingchenhui0618-arch/dsh-taskwatch.git"
+    "url": "git+https://github.com/dingchenhui0618-arch/dsh-in-hand.git"
   },
-  "homepage": "https://github.com/dingchenhui0618-arch/dsh-taskwatch#readme",
+  "homepage": "https://github.com/dingchenhui0618-arch/dsh-in-hand#readme",
   "bugs": {
-    "url": "https://github.com/dingchenhui0618-arch/dsh-taskwatch/issues"
+    "url": "https://github.com/dingchenhui0618-arch/dsh-in-hand/issues"
   },
   "author": "dingchenhui0618-arch",
   "license": "Apache-2.0"

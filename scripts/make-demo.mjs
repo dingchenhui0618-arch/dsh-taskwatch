@@ -263,7 +263,7 @@ export function buildDemo(page, now = Date.now()) {
     '剥离 service worker 注册块'
   )
 
-  out = mustReplace(out, /<title>[^<]*<\/title>/, '<title>任务监控 · 演示数据</title>', '替换标题')
+  out = mustReplace(out, /<title>[^<]*<\/title>/, '<title>掌上 DSH · 演示数据</title>', '替换标题')
 
   // 页脚曾经是个带 id="foot" 的说明行，2026-10-08 已改成输入框容器；
   // 演示标记改由启动块里的 setSub() 写入（见 demoBoot），不要再往 DOM 里塞。

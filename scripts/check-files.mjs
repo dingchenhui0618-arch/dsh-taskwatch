@@ -33,7 +33,7 @@ function ok(label, cond, extra) {
   }
 }
 
-const sandbox = mkdtempSync(join(tmpdir(), 'taskwatch-files-'))
+const sandbox = mkdtempSync(join(tmpdir(), 'in-hand-files-'))
 const rootA = join(sandbox, 'attachments')
 const rootB = join(sandbox, 'outbox')
 const outside = join(sandbox, 'outside')
