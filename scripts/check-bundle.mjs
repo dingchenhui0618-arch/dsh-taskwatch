@@ -462,6 +462,28 @@ check('手机页从服务端取工作区清单，不自己拼路径',
     /chat\/create', path \? \{ workspace: path \} : \{\}/.test(page) &&
     /el\.id = 'wsp'/.test(page) && /#wsp\{/.test(page))
 
+// 牌桌的"你能不能操作"必须由**轮到你**决定，不能拿快照里的 legal 决定。
+// legal 描述的是当前行动者（host.js:231 取 players[state.toAct]）—— 多半是正在思考
+// 的 AI。用它开按钮，就是"按钮亮着、点了没反应"：插件 act() 在 toAct !== 0 时静默
+// 返回原快照、HTTP 照样写 200（host.js:921-923）。这类坏体验截图和字符串检查都很难
+// 撞见（真机上要正好落在 AI 的回合），所以把判据本身钉住。
+check('牌桌动作按钮按 toAct===0 开，不拿 legal（属于当前行动者）开',
+  /var myTurn = s\.status === 'playing' && s\.toAct === 0/.test(page) &&
+    /\$\('pkFold'\)\.disabled = !can \|\| !legal\.fold/.test(page) &&
+    /\$\('pkCheck'\)\.disabled = !can \|\| !\(legal\.check \|\| legal\.call\)/.test(page) &&
+    /\$\('pkRaise'\)\.disabled = !can \|\| !raisable/.test(page) &&
+    !/var can = !PK\.busy && !!\(legal\.fold/.test(page))
+// toAct 下发的就是座位号（host.js:242），不是对象：读 .seat/.name 永远 undefined。
+// 注释里会引用这两个错误写法做说明，所以先剥掉注释再判（只判真正执行的代码）。
+const pageCode = page.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
+check('手机页不把 toAct 当对象读（它就是座位号）',
+  !/s\.toAct\.(seat|name)/.test(pageCode) && /s\.toAct === seatNo/.test(pageCode))
+// 静默 no-op 是插件的行为，页面改不了；但页面不能跟着沉默 —— 当场把原因说出来。
+check('轮不到你时页面当场说原因，200 不当成生效',
+  /还没轮到你，等对手行动/.test(page) &&
+    /这一下没生效：刚轮到别人/.test(page) &&
+    /if \(!\(live\.status === 'playing' && live\.toAct === 0\)\)/.test(page))
+
 // 结构图标必须是矢量 SVG，不能是 emoji 或 ☰ ➤ ✕ ✓ 这类字符：
 // 字符图标在不同字体下大小、基线、粗细都不一样，换台设备就变形。
 // 注释里提到这些字符是允许的，所以先剥掉注释再判。

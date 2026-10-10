@@ -2278,7 +2278,10 @@ function pkRender(s){
     pos = pkSeatPos(p.seat == null ? i : p.seat)
     var isHero = (p.kind === "human") || (s.heroIndex === i) || p.isHero || p.hero
     if (isHero) me = p
-    var turn = !!(p.isToAct || (s.toAct && (s.toAct.seat === i || s.toAct.name === p.name)))
+    // toAct 是**座位号**（host.js:242 下发的就是 state.toAct 这个数），不是对象：
+    // 读 s.toAct.seat / s.toAct.name 永远拿到 undefined。牌手自带的 isToAct 才权威（host.js:284）。
+    var seatNo = (p.seat == null ? i : p.seat)
+    var turn = !!p.isToAct || s.toAct === seatNo
     var badge = ''
     if (p.isDealer || i === s.dealer) badge = 'D'
     else if (p.isSb || i === s.sb) badge = 'SB'
@@ -2302,15 +2305,20 @@ function pkRender(s){
     return pkEsc(typeof l === 'string' ? l : (l && (l.text || l.msg)) || '')
   }).join('<br>')
   $('pkLog').innerHTML = log
-  // 动作区
-  var can = !PK.busy && !!(legal.fold || legal.check || legal.call || legal.raise)
+  // 动作区：**只有轮到你**才谈得上"你能做什么"。
+  // 快照里的 legal 描述的是**当前行动者**（host.js:231 取 players[state.toAct]），
+  // 而那个行动者多半是正在思考的 AI —— 拿它开按钮，就是"按钮亮着、点了没反应"：
+  // 插件 act() 在 toAct !== 0 时静默返回原快照，HTTP 照样写 200（host.js:921-923）。
+  // 插件自家客户端用的判据是 toAct === 0（client.cjs:577），这里照抄同一条。
+  var myTurn = s.status === 'playing' && s.toAct === 0
+  var can = !PK.busy && myTurn
   var waiting = !can && !s.gameOver
-  $('pkFold').disabled = !legal.fold
-  // 过牌与跟注共用一个按钮：任一合法就该可点（只在 check 合法时开，跟注会点不动）。
-  $('pkCheck').disabled = !(legal.check || legal.call)
+  $('pkFold').disabled = !can || !legal.fold
+  // 过牌与跟注共用一个按钮：轮到你时 legal 才是你的（任一合法就该可点）。
+  $('pkCheck').disabled = !can || !(legal.check || legal.call)
   $('pkCheck').textContent = legal.check ? '过牌' : (legal.call ? ('跟注 ' + (legal.callAmount || '')) : '过牌')
   var raisable = !!legal.raise
-  $('pkRaise').disabled = !raisable
+  $('pkRaise').disabled = !can || !raisable
   var lo = legal.minRaiseTo || 0, hi = legal.maxRaiseTo || 0
   var r = $('pkRange')
   r.min = lo; r.max = hi; r.disabled = !raisable
@@ -2319,11 +2327,24 @@ function pkRender(s){
   // 空闲时不该出现「下一手」：只有牌局进行中、且轮不到你的时候才需要它。
   $('pkNext').style.display = (waiting && s.status === 'playing') ? '' : 'none'
   $('pkStart').style.display = (s.status === 'playing') ? 'none' : ''
+  var thinking = null
+  for (i = 0; i < list.length; i++) if (list[i] && list[i].isToAct) thinking = list[i]
   $('pkHint').textContent = PK.busy ? '提交中...' :
-    (s.gameOver ? '本局结束' : (can ? (s.toAct && s.toAct.name ? ('轮到 ' + s.toAct.name) : '轮到你') : '等待其他玩家…'))
+    (s.gameOver ? '本局结束'
+      : (s.status !== 'playing' ? (s.status === 'idle' ? '点「开始」发牌' : '这一手结束了')
+        : (myTurn ? '轮到你'
+          : (((thinking && thinking.name ? thinking.name : '对手') + ' 正在思考…'))))
 }
 function pkAct(action){
   if (PK.busy) return
+  // 先自己拦一道。插件对"轮不到你"的动作是**静默 no-op 且照样回 200**，
+  // "点了没反应又不说原因"是最难查的一类坏体验：这里当场把原因说清楚。
+  var live = PK.snap || {}
+  if (!(live.status === 'playing' && live.toAct === 0)) {
+    pkToast('还没轮到你，等对手行动')
+    return
+  }
+  var before = { toAct: live.toAct, log: live.log ? live.log.length : 0 }
   PK.busy = true; pkDraw()
   // 插件读的是 type（源码 host.js:922 取 args.type）与 amount；action 只是别名。
   // 它对未知字段是静默忽略的 —— 猜错字段名不报错、只表现为"点了没反应"，
@@ -2334,7 +2355,12 @@ function pkAct(action){
     body.amount = v
     body.to = v
   }
-  pkCall('/act', body).then(function(s){ PK.snap = s; pkDraw() })
+  pkCall('/act', body).then(function(s){
+    PK.snap = s; pkDraw()
+    // 真链路上仍可能"刚好轮到别人"：200 不等于生效，如实说出来，不装作点过了。
+    if (s && s.status === 'playing' && s.toAct === before.toAct &&
+        (s.log ? s.log.length : 0) === before.log) pkToast('这一下没生效：刚轮到别人')
+  })
     // 插件的加注金额字段名若是 to 而不是 amount，这里兜一次，免得手机上"加注"永远失败。
     .catch(function(err){
       if (action !== 'raise') { pkToast('操作失败：' + err.message); return null }
